@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modal Mobil</title>
+    <style>
+        :root {
+            color-scheme: dark;
+        }
+        body { font-family: sans-serif; padding: 20px; }
+        
+        /* Butonul mare, ușor de apăsat pe mobil */
+        #openBtn { padding: 15px; font-size: 18px; width: 100%; max-width: 300px; }
+
+        /* Modalul: Simplu, ocupă tot ecranul pe mobil */
+        dialog { 
+            width: 95%; 
+            max-width: 400px; 
+            border: 1px solid #ccc; 
+            border-radius: 8px; 
+            padding: 20px; 
+        }
+        
+        /* Lista pe 2 coloane mari, aerisite pentru degete */
+        ul { 
+            list-style: none; 
+            padding: 0; 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            gap: 20px; 
+            margin: 20px 0;
+        }
+
+        /* Checkbox-uri uriașe (40px) ca să le nimerești instant pe ecran tactil */
+        li { display: flex; align-items: center; gap: 15px; font-size: 20px; }
+        input[type="checkbox"] { width: 40px; height: 40px; }
+    </style>
+</head>
+<body>
+
+    <button id="openBtn">Loads</button>
+
+    <dialog id="modal">
+        <h3>Select</h3>
+        <ul id="lista"></ul>
+        <button id="closeBtn" style="padding: 10px; width: 100%;">Close</button>
+    </dialog>
+
+    <script>
+        const modal = document.getElementById('modal');
+        
+        // Open-Close modal
+        document.getElementById('openBtn').onclick = () => modal.showModal();
+        document.getElementById('closeBtn').onclick = () => modal.close();
+
+        // Generate 24 elements
+        const lista = document.getElementById('lista');
+        for (let i = 1; i <= 24; i++) {
+            const li = document.createElement('li');
+            
+            const box = document.createElement('input');
+            box.type = 'checkbox';
+            box.id = `l_${i}`;
+            
+            const label = document.createElement('label');
+            label.htmlFor = `l_${i}`;
+            label.textContent = `Load ${i}`;
+            
+            li.appendChild(box);
+            li.appendChild(label);
+            lista.appendChild(li);
+        }
+    </script>
+</body>
+</html>
