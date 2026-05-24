@@ -103,8 +103,6 @@ async function scanLoop() {
   if (!isScanning || !worker) return;
 
   if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
-    
-    // Matematica precisă de pe mobil (calculată corect)
     const videoRect = video.getBoundingClientRect();
     const viewRect = viewfinder.getBoundingClientRect();
 
@@ -122,19 +120,26 @@ async function scanLoop() {
     cropCanvas.height = cropH;
     
     try {
-      // Decupăm exact zona roșie
+      // 1. APLICĂM FILTRELE MAGICE ÎNAINTE DE A DESENA
+      // Grayscale: scoate culorile parbrizului
+      // Blur: umflă literele subțiri / punctele, făcându-le să se atingă
+      // Contrast: întărește zonele atinse transformându-le în litere groase și clare
+      cropCtx.filter = 'grayscale(100%) contrast(300%) blur(1px)';
+      
+      // 2. Desenăm imaginea tăiată
       cropCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+      
+      // Resetăm filtrul ca să nu afecteze alte operațiuni viitoare
+      cropCtx.filter = 'none'; 
 
-      // AI-ul face magia și găsește el automat unde sunt literele în această bandă
+      statusLabel.innerText = "Se analizează imaginea...";
       const { data: { text } } = await worker.recognize(cropCanvas);
       
-      // Curățăm complet orice spațiu, linie nouă sau caracter ciudat lăsat de AI
       const cleanText = text.replace(/[^A-Z0-9]/g, '').trim();
 
       ocrResult.innerText = cleanText.length > 0 ? cleanText : "-----------------";
       charCounter.innerText = `${cleanText.length} / 17 caractere`;
 
-      // Dacă a găsit fix 17 caractere, validăm vizual
       if (cleanText.length === 17) {
         statusLabel.innerText = "VIN DETECTAT COMPLET!";
         statusLabel.style.color = "#34c759";
@@ -149,8 +154,8 @@ async function scanLoop() {
     }
   }
 
-  // Ciclul rulează la fiecare secundă timp de 3 sec
-  setTimeout(scanLoop, 3000);
+  // OPTIMIZARE TIMING:
+  setTimeout(scanLoop, 500); 
 }
 </script>
 
