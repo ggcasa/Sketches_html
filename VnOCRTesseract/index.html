@@ -8,10 +8,9 @@
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0f0f12; color: #e4e4e7; margin: 0; padding: 15px; text-align: center; }
     .container { max-width: 500px; margin: 0 auto; }
     
-    /* Container video care previne letterboxing-ul pe mobil */
     .scanner-container { position: relative; width: 100%; max-width: 450px; margin: 0 auto 15px auto; border-radius: 12px; overflow: hidden; background: #000; display: flex; justify-content: center; align-items: center; }
     
-    /* object-fit: cover ajută la umplerea ecranului fără dungi negre */
+    /* Ne asigurăm că video-ul își păstrează proporțiile native */
     video { width: 100%; height: auto; display: block; }
     
     .viewfinder { position: absolute; width: 85%; height: 50px; border: 2px solid #00ffcc; border-radius: 6px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6); pointer-events: none; }
@@ -23,8 +22,9 @@
     button { background: #00ffcc; color: #000; border: none; padding: 14px 28px; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 8px; width: 100%; max-width: 450px; margin-bottom: 15px; }
     
     .debug-label { font-size: 12px; color: #888; margin-top: 10px; }
-    /* Am făcut Canvas-ul VIZIBIL ca să vezi exact ce decupează matematica pe telefonul tău */
-    #cropCanvas { display: block; width: 100%; max-width: 450px; border: 2px dashed #ff3b30; margin: 5px auto; background: #000; }
+    
+    /* Reparăm afișarea zonei de debug ca să respecte proporția imaginii tăiate */
+    #cropCanvas { display: block; width: 100%; max-width: 450px; height: auto; border: 2px dashed #ff3b30; margin: 5px auto; background: #111; }
   </style>
 
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -36,7 +36,7 @@
   <p style="font-size: 14px; color: #8e8e93; margin-top: -10px;">Aliniați textul în vizorul verde</p>
   
   <div class="scanner-container">
-    <video id="video" autoplay playsinline></video>
+    <video id="video" autoplay playsinline muted></video>
     <div id="viewfinder" class="viewfinder"></div>
   </div>
 
@@ -47,7 +47,7 @@
     <div id="ocrResult" class="result">---</div>
   </div>
 
-  <div class="debug-label">Ce vede inteligența artificială (Debug):</div>
+  <div class="debug-label" id="debugInfo">Ce vede inteligența artificială (Debug):</div>
   <canvas id="cropCanvas"></canvas>
 </div>
 
@@ -59,6 +59,7 @@ const ocrResult = document.getElementById('ocrResult');
 const cropCanvas = document.getElementById('cropCanvas');
 const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true });
 const viewfinder = document.getElementById('viewfinder');
+const debugInfo = document.getElementById('debugInfo');
 
 let isScanning = false;
 let worker = null;
@@ -66,10 +67,6 @@ let worker = null;
 async function initOCR() {
   statusLabel.innerText = "Se încarcă motorul AI...";
   worker = await Tesseract.createWorker('eng');
-  
-  // ATENȚIE: Am scos complet setarea de "whitelist" cu litere mari.
-  // Acum recunoaște și litere mici, spații, sau semne de punctuație.
-
   statusLabel.innerText = "Motor AI Pregătit. Scanați...";
 }
 
@@ -78,7 +75,8 @@ btnStart.addEventListener('click', async () => {
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+      // 1280x720 este mult mai rapid pentru telefoane și perfect suficient pentru OCR
+      video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
       audio: false
     });
     
@@ -88,8 +86,8 @@ btnStart.addEventListener('click', async () => {
 
     await initOCR();
     
-    // Începem procesarea după ce video-ul are date
-    video.addEventListener('loadeddata', scanLoop);
+    // Folosim 'playing' în loc de 'loadeddata' pentru a fi siguri că fluxul a pornit
+    video.addEventListener('playing', scanLoop);
   } catch (err) {
     alert("Eroare acces cameră: " + err.message);
   }
@@ -98,51 +96,58 @@ btnStart.addEventListener('click', async () => {
 async function scanLoop() {
   if (!isScanning || !worker) return;
 
-  if (video.readyState === video.HAVE_ENOUGH_DATA) {
-    statusLabel.innerText = "Se analizează cadrul...";
-
-    // 1. Calculăm geometria exactă pentru decupajul de pe mobil
+  // VERIFICARE CRITICĂ: Ne asigurăm că telefonul a trimis dimensiunile camerei
+  if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+    
+    // 1. Coordonatele elementelor afișate pe ecran (CSS)
     const videoRect = video.getBoundingClientRect();
     const viewRect = viewfinder.getBoundingClientRect();
 
-    // Factorul real de scalare dintre rezoluția nativă a camerei și mărimea de pe ecran
-    const scaleX = video.videoWidth / videoRect.width;
-    const scaleY = video.videoHeight / videoRect.height;
+    // 2. Procentajul poziției vizorului față de marginile video-ului
+    const pctLeft = (viewRect.left - videoRect.left) / videoRect.width;
+    const pctTop = (viewRect.top - videoRect.top) / videoRect.height;
+    const pctWidth = viewRect.width / videoRect.width;
+    const pctHeight = viewRect.height / videoRect.height;
 
-    // Coordonatele vizorului tăiate precis
-    const cropX = (viewRect.left - videoRect.left) * scaleX;
-    const cropY = (viewRect.top - videoRect.top) * scaleY;
-    const cropW = viewRect.width * scaleX;
-    const cropH = viewRect.height * scaleY;
+    // 3. Aplicăm procentajul pe rezoluția NATIVĂ a camerei (pixelii reali hardware)
+    // Folosim Math.round pentru a evita ca browserul să deseneze 0.5 pixeli (care cauzează erori)
+    const cropX = Math.round(pctLeft * video.videoWidth);
+    const cropY = Math.round(pctTop * video.videoHeight);
+    const cropW = Math.max(1, Math.round(pctWidth * video.videoWidth)); // Minim 1 pixel, să nu fie 0
+    const cropH = Math.max(1, Math.round(pctHeight * video.videoHeight));
 
-    // 2. Setăm canvas-ul și desenăm felia
+    // Actualizăm dimensiunea canvas-ului ascuns
     cropCanvas.width = cropW;
     cropCanvas.height = cropH;
     
-    // Curățăm canvas-ul înainte de desenare (previne artefacte)
-    cropCtx.clearRect(0, 0, cropW, cropH);
-    cropCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-
     try {
-      // 3. Trimitem imaginea decupată către Tesseract
+      // 4. Decupăm imaginea din video și o punem în canvas-ul de debug
+      cropCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+      // Afișăm rezoluția internă a decupajului doar pentru confirmare
+      debugInfo.innerText = `Decupaj Nativ: ${cropW}x${cropH} px`;
+
+      // 5. Trimitem doar fâșia tăiată la Tesseract
+      statusLabel.innerText = "Se analizează...";
       const { data: { text } } = await worker.recognize(cropCanvas);
       
       const cleanText = text.replace(/\n/g, '').trim();
 
-      if (cleanText.length > 2) {
+      if (cleanText.length >= 2) {
         ocrResult.innerText = cleanText;
         statusLabel.innerText = "Text detectat!";
       } else {
-        statusLabel.innerText = "Poziționați textul...";
+        statusLabel.innerText = "Căutare text...";
       }
-    } catch (ocrError) {
-      console.error("Eroare OCR:", ocrError);
+    } catch (err) {
+      console.warn("Cadru ignorat:", err);
     }
+  } else {
+    statusLabel.innerText = "Se calibrează lentila...";
   }
 
-  // Pe mobil lăsăm puțin mai mult timp de respirație (1200ms) 
-  // ca să nu supraîncălzim telefonul Pixel 10 și bateria
-  setTimeout(scanLoop, 1200);
+  // Pauză 1 secundă pe mobil
+  setTimeout(scanLoop, 1000);
 }
 </script>
 
