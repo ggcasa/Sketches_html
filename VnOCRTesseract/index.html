@@ -61,21 +61,28 @@ const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true });
 const viewfinder = document.getElementById('viewfinder');
 const debugInfo = document.getElementById('debugInfo');
 
+// Ne asigurăm că vizorul este forțat pe centru (pentru precizia matematicii de decupare)
+viewfinder.style.top = '50%';
+viewfinder.style.left = '50%';
+viewfinder.style.transform = 'translate(-50%, -50%)';
+
 let isScanning = false;
 let worker = null;
 
 async function initOCR() {
   statusLabel.innerText = "Se încarcă motorul AI...";
   worker = await Tesseract.createWorker('eng');
-  statusLabel.innerText = "Motor AI Pregătit. Scanați...";
+  statusLabel.innerText = "Motor AI Pregătit. Porniți camera...";
 }
+
+// Inițializăm AI-ul imediat cum se încarcă pagina (în fundal)
+initOCR();
 
 btnStart.addEventListener('click', async () => {
   if (isScanning) return;
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      // 1280x720 este mult mai rapid pentru telefoane și perfect suficient pentru OCR
       video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
       audio: false
     });
@@ -84,10 +91,11 @@ btnStart.addEventListener('click', async () => {
     btnStart.style.display = "none";
     isScanning = true;
 
-    await initOCR();
+    statusLabel.innerText = "Camera pornită. Se inițiază fluxul...";
     
-    // Folosim 'playing' în loc de 'loadeddata' pentru a fi siguri că fluxul a pornit
-    video.addEventListener('playing', scanLoop);
+    // CORECTURĂ: Pornim bucla direct, fără să mai așteptăm evenimente care se pot pierde
+    scanLoop();
+    
   } catch (err) {
     alert("Eroare acces cameră: " + err.message);
   }
@@ -96,38 +104,30 @@ btnStart.addEventListener('click', async () => {
 async function scanLoop() {
   if (!isScanning || !worker) return;
 
-  // VERIFICARE CRITICĂ: Ne asigurăm că telefonul a trimis dimensiunile camerei
+  // Verificăm constant dacă video-ul are date valide
   if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
     
-    // 1. Coordonatele elementelor afișate pe ecran (CSS)
     const videoRect = video.getBoundingClientRect();
     const viewRect = viewfinder.getBoundingClientRect();
 
-    // 2. Procentajul poziției vizorului față de marginile video-ului
     const pctLeft = (viewRect.left - videoRect.left) / videoRect.width;
     const pctTop = (viewRect.top - videoRect.top) / videoRect.height;
     const pctWidth = viewRect.width / videoRect.width;
     const pctHeight = viewRect.height / videoRect.height;
 
-    // 3. Aplicăm procentajul pe rezoluția NATIVĂ a camerei (pixelii reali hardware)
-    // Folosim Math.round pentru a evita ca browserul să deseneze 0.5 pixeli (care cauzează erori)
     const cropX = Math.round(pctLeft * video.videoWidth);
     const cropY = Math.round(pctTop * video.videoHeight);
-    const cropW = Math.max(1, Math.round(pctWidth * video.videoWidth)); // Minim 1 pixel, să nu fie 0
+    const cropW = Math.max(1, Math.round(pctWidth * video.videoWidth));
     const cropH = Math.max(1, Math.round(pctHeight * video.videoHeight));
 
-    // Actualizăm dimensiunea canvas-ului ascuns
     cropCanvas.width = cropW;
     cropCanvas.height = cropH;
     
     try {
-      // 4. Decupăm imaginea din video și o punem în canvas-ul de debug
+      // Dacă totul e corect, aici se va desena imaginea reală în căsuța roșie
       cropCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+      debugInfo.innerText = `Decupaj: ${cropW}x${cropH}px | X:${cropX} Y:${cropY}`;
 
-      // Afișăm rezoluția internă a decupajului doar pentru confirmare
-      debugInfo.innerText = `Decupaj Nativ: ${cropW}x${cropH} px`;
-
-      // 5. Trimitem doar fâșia tăiată la Tesseract
       statusLabel.innerText = "Se analizează...";
       const { data: { text } } = await worker.recognize(cropCanvas);
       
@@ -140,14 +140,15 @@ async function scanLoop() {
         statusLabel.innerText = "Căutare text...";
       }
     } catch (err) {
-      console.warn("Cadru ignorat:", err);
+      console.warn("Eroare la procesarea cadrului:", err);
     }
   } else {
-    statusLabel.innerText = "Se calibrează lentila...";
+    // Dacă rezoluția nu s-a încărcat încă, așteptăm liniștiți
+    statusLabel.innerText = "Se așteaptă calibrarea camerei...";
   }
 
-  // Pauză 1 secundă pe mobil
-  setTimeout(scanLoop, 1000);
+  // Pe desktop/laptop poți lăsa timpul de așteptare puțin mai mic (ex: 800ms)
+  setTimeout(scanLoop, 800);
 }
 </script>
 
