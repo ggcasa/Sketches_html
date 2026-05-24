@@ -3,121 +3,216 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Scanner VIN Auto (Pro)</title>
+  <title>Mod vn 1 (AI)</title>
   <style>
     body { font-family: -apple-system, sans-serif; background: #0f0f12; color: #e4e4e7; margin: 0; padding: 15px; text-align: center; }
     .container { max-width: 500px; margin: 0 auto; }
+    
     .scanner-container { position: relative; width: 100%; height: 320px; max-width: 450px; margin: 0 auto 15px auto; border-radius: 12px; overflow: hidden; background: #000; }
     video { width: 100%; height: 100%; object-fit: cover; display: block; }
     .viewfinder { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 95%; height: 45px; border: 2px solid #ff3b30; border-radius: 4px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.7); pointer-events: none; transition: border-color 0.3s; }
+    
     .box { background: #1c1c1e; padding: 15px; border-radius: 10px; margin-bottom: 15px; border: 1px solid #2c2c2e; }
-    .status { font-size: 13px; color: #ff3b30; margin-bottom: 5px; font-weight: bold; }
+    .status { font-size: 13px; color: #ff3b30; margin-bottom: 5px; min-height: 18px; font-weight: bold; transition: color 0.3s; }
     .result { font-family: monospace; font-size: 24px; color: #ffffff; font-weight: bold; letter-spacing: 2px; min-height: 30px; word-break: break-all; }
-    button { background: #ff3b30; color: #fff; border: none; padding: 14px 28px; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 8px; width: 100%; max-width: 450px; margin-bottom: 15px; }
+    .counter { font-size: 12px; color: #8e8e93; margin-top: 5px; }
+    
+    .button-group { display: flex; gap: 10px; max-width: 450px; margin: 0 auto 15px auto; }
+    button { color: #000; border: none; padding: 14px 20px; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 8px; flex: 1; transition: 0.2s; }
+    #btnAction { background: #ff9500; }
+    #btnAction.active { background: #ff3b30; color: #fff; }
+    #btnCopy { background: #0a84ff; color: #fff; display: none; }
+    #btnCopy:active { background: #0060d1; }
+    
+    .debug-label { font-size: 11px; color: #888; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px; }
     #cropCanvas { display: block; width: 100%; max-width: 450px; height: auto; border: 1px solid #333; margin: 5px auto; background: #000; }
   </style>
+
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
 
 <div class="container">
   <h2>Scanner VIN Auto</h2>
+  <p style="font-size: 14px; color: #8e8e93; margin-top: -10px;">Încadrați complet cele 17 caractere</p>
+  
   <div class="scanner-container">
     <video id="video" autoplay playsinline muted></video>
     <div id="viewfinder" class="viewfinder"></div>
   </div>
 
-  <button id="btnStart">Pornește Scanarea</button>
+  <div class="button-group">
+    <button id="btnAction">Pornește Camera</button>
+    <button id="btnCopy">Copiază VIN</button>
+  </div>
 
   <div class="box">
     <div id="statusLabel" class="status">Așteptare cameră...</div>
     <div id="ocrResult" class="result">-----------------</div>
+    <div id="charCounter" class="counter">0 / 17 caractere</div>
   </div>
 
+  <div class="debug-label">Analiză Optică:</div>
   <canvas id="cropCanvas"></canvas>
 </div>
 
 <script>
-const video = document.getElementById('video'),
-      btnStart = document.getElementById('btnStart'),
-      statusLabel = document.getElementById('statusLabel'),
-      ocrResult = document.getElementById('ocrResult'),
-      cropCanvas = document.getElementById('cropCanvas'),
-      cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true }),
-      viewfinder = document.getElementById('viewfinder');
+const video = document.getElementById('video');
+const btnAction = document.getElementById('btnAction');
+const btnCopy = document.getElementById('btnCopy');
+const statusLabel = document.getElementById('statusLabel');
+const ocrResult = document.getElementById('ocrResult');
+const charCounter = document.getElementById('charCounter');
+const cropCanvas = document.getElementById('cropCanvas');
+const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true });
+const viewfinder = document.getElementById('viewfinder');
 
-let isScanning = false, worker = null, feedbackPlayed = false;
+let isCameraOn = false;
+let isPaused = false;
+let worker = null;
 
 async function initOCR() {
+  statusLabel.innerText = "Se încarcă motorul AI...";
   worker = await Tesseract.createWorker('eng');
-  await worker.setParameters({ tessedit_char_whitelist: '0123456789ABCDEFGHJKLMNPRSTUVWXYZ' });
-  statusLabel.innerText = "Sistem Pregătit!";
+  await worker.setParameters({
+    tessedit_char_whitelist: '0123456789ABCDEFGHJKLMNPRSTUVWXYZ',
+  });
+  statusLabel.innerText = "Sistem Pregătit. Scanați!";
   statusLabel.style.color = "#34c759";
 }
 
-function triggerSuccessFeedback() {
-  if ("vibrate" in navigator) navigator.vibrate([150, 50, 150]);
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(880, ctx.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(1760, ctx.currentTime + 0.1);
-  gain.gain.setValueAtTime(0, ctx.currentTime);
-  gain.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 0.05);
-  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-  osc.connect(gain); gain.connect(ctx.destination);
-  osc.start(); osc.stop(ctx.currentTime + 0.3);
-}
+btnAction.addEventListener('click', async () => {
+  if (!isCameraOn) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1080 }, height: { ideal: 1920 } },
+        audio: false
+      });
+      video.srcObject = stream;
+      isCameraOn = true;
+      btnAction.innerText = "Pauză Scanare";
+      btnAction.classList.add("active");
 
-function enhanceImage(ctx, w, h) {
-  const imgData = ctx.getImageData(0, 0, w, h);
+      await initOCR();
+      
+      // FIX-UL AICI: Am eliminat "evenimentul" care rata startul și apelăm bucla direct.
+      scanLoop(); 
+      
+    } catch (err) {
+      alert("Eroare acces cameră: " + err.message);
+    }
+  } else {
+    isPaused = !isPaused;
+    if (isPaused) {
+      btnAction.innerText = "Reluare Scanare";
+      btnAction.classList.remove("active");
+      btnCopy.style.display = "block";
+      statusLabel.innerText = "Scanare Oprită.";
+    } else {
+      btnAction.innerText = "Pauză Scanare";
+      btnAction.classList.add("active");
+      btnCopy.style.display = "none";
+      statusLabel.innerText = "Se scanează...";
+      statusLabel.style.color = "#ff3b30";
+      viewfinder.style.borderColor = "#ff3b30";
+    }
+  }
+});
+
+btnCopy.addEventListener('click', () => {
+  const textToCopy = ocrResult.innerText;
+  if (textToCopy && textToCopy !== "-----------------") {
+    navigator.clipboard.writeText(textToCopy).then(() => {
+      const originalText = btnCopy.innerText;
+      btnCopy.innerText = "Cod Copiat!";
+      btnCopy.style.background = "#34c759";
+      setTimeout(() => {
+        btnCopy.innerText = originalText;
+        btnCopy.style.background = "#0a84ff";
+      }, 2000);
+    }).catch(err => {
+      alert("Nu am putut copia codul: " + err);
+    });
+  }
+});
+
+function applyHighContrast(ctx, width, height) {
+  const imgData = ctx.getImageData(0, 0, width, height);
   const data = imgData.data;
-  let brightness = 0;
-  for (let i = 0; i < data.length; i += 4) brightness += (data[i] + data[i+1] + data[i+2]) / 3;
-  const inv = (brightness / (w * h)) < 120;
+  
   for (let i = 0; i < data.length; i += 4) {
-    let g = (data[i] + data[i+1] + data[i+2]) / 3 > 110 ? 255 : 0;
-    if (inv) g = 255 - g;
-    data[i] = data[i+1] = data[i+2] = g;
+    let gray = (data[i] + data[i+1] + data[i+2]) / 3;
+    gray = (gray - 128) * 1.8 + 128; 
+    gray = Math.max(0, Math.min(255, gray)); 
+    data[i] = gray; 
+    data[i+1] = gray; 
+    data[i+2] = gray;
+    data[i+3] = 255; // Forțăm opacitatea maximă ca să nu apară erori de transparență
   }
   ctx.putImageData(imgData, 0, 0);
 }
 
-btnStart.addEventListener('click', async () => {
-  if (isScanning) return;
-  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } });
-  video.srcObject = stream;
-  btnStart.style.display = "none";
-  isScanning = true;
-  await initOCR();
-  video.addEventListener('playing', scanLoop);
-});
-
 async function scanLoop() {
-  if (!isScanning) return;
-  const vR = video.getBoundingClientRect(), fR = viewfinder.getBoundingClientRect();
-  const sX = video.videoWidth / vR.width, sY = video.videoHeight / vR.height;
+  if (!isCameraOn || !worker) return;
   
-  cropCanvas.width = Math.round(fR.width * sX);
-  cropCanvas.height = Math.round(fR.height * sY);
-  
-  cropCtx.drawImage(video, (fR.left - vR.left) * sX, (fR.top - vR.top) * sY, cropCanvas.width, cropCanvas.height, 0, 0, cropCanvas.width, cropCanvas.height);
-  enhanceImage(cropCtx, cropCanvas.width, cropCanvas.height);
-
-  const { data: { text } } = await worker.recognize(cropCanvas);
-  const vin = text.replace(/[^A-Z0-9]/g, '').trim();
-
-  if (vin.length === 17) {
-    ocrResult.innerText = vin;
-    statusLabel.innerText = "VIN DETECTAT!";
-    if (!feedbackPlayed) { triggerSuccessFeedback(); feedbackPlayed = true; }
-  } else {
-    if (vin.length > 0) ocrResult.innerText = vin;
-    feedbackPlayed = false;
+  if (isPaused) {
+    setTimeout(scanLoop, 500);
+    return;
   }
-  setTimeout(scanLoop, 500);
+
+  // Aici așteaptă oricum până când camera livrează o rezoluție reală
+  if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+    
+    const videoRect = video.getBoundingClientRect();
+    const viewRect = viewfinder.getBoundingClientRect();
+    
+    const scale = Math.max(videoRect.width / video.videoWidth, videoRect.height / video.videoHeight);
+    const dx = (videoRect.width - (video.videoWidth * scale)) / 2;
+    const dy = (videoRect.height - (video.videoHeight * scale)) / 2;
+
+    const cropX = Math.round(((viewRect.left - videoRect.left) - dx) / scale);
+    const cropY = Math.round(((viewRect.top - videoRect.top) - dy) / scale);
+    const cropW = Math.max(1, Math.round(viewRect.width / scale));
+    const cropH = Math.max(1, Math.round(viewRect.height / scale));
+
+    cropCanvas.width = cropW;
+    cropCanvas.height = cropH;
+    
+    try {
+      cropCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+      applyHighContrast(cropCtx, cropW, cropH);
+
+      const { data: { text } } = await worker.recognize(cropCanvas);
+      const cleanText = text.replace(/[^A-Z0-9]/g, '').trim();
+
+      if (cleanText.length > 0) {
+        ocrResult.innerText = cleanText;
+        charCounter.innerText = `${cleanText.length} / 17 caractere`;
+      }
+
+      if (cleanText.length === 17) {
+        statusLabel.innerText = "VIN VALIDAT! Scanare oprită.";
+        statusLabel.style.color = "#34c759";
+        viewfinder.style.borderColor = "#34c759";
+        
+        isPaused = true;
+        btnAction.innerText = "Reluare Scanare";
+        btnAction.classList.remove("active");
+        btnCopy.style.display = "block"; 
+      } else {
+        statusLabel.innerText = "Se scanează...";
+        statusLabel.style.color = "#ff3b30";
+        viewfinder.style.borderColor = "#ff3b30";
+      }
+    } catch (err) {
+      console.warn("Eroare la procesarea cadrului:", err);
+    }
+  }
+  
+  // Rulează o dată pe secundă
+  setTimeout(scanLoop, 1000);
 }
 </script>
+
 </body>
 </html>
