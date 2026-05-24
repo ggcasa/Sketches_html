@@ -21,8 +21,8 @@
     
     button { background: #ff3b30; color: #fff; border: none; padding: 14px 28px; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 8px; width: 100%; max-width: 450px; margin-bottom: 15px; }
     
-    /* Ascundem canvas-ul de debug, acum că știm că decupajul pe mobil funcționează perfect */
-    #cropCanvas { display: none; }
+    /* Afișăm canvas-ul ca să vezi filtrele în acțiune (poți să-l pui 'none' mai târziu) */
+    #cropCanvas { display: block; width: 100%; max-width: 450px; border: 1px dashed #555; margin-top: 10px; }
   </style>
 
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -30,7 +30,6 @@
 <body>
 
 <div class="container">
-  <!-- <input type="text" id="v1"> -->
   <p style="font-size: 14px; color: #8e8e93; margin-top: -10px;">Încadrați complet cele 17 caractere</p>
   
   <div class="scanner-container">
@@ -46,11 +45,12 @@
     <div id="charCounter" class="counter">0 / 17 caractere</div>
   </div>
 
+  <div style="font-size:11px; color:#666;">Filtru procesare (Debug):</div>
   <canvas id="cropCanvas"></canvas>
 </div>
 
 <script>
-const v1 = document.getElementById("v1");
+// AM ȘTERS v1 PENTRU CĂ NU EXISTĂ ÎN HTML
 const video = document.getElementById('video');
 const btnStart = document.getElementById('btnStart');
 const statusLabel = document.getElementById('statusLabel');
@@ -92,7 +92,7 @@ btnStart.addEventListener('click', async () => {
     // Așteptăm să se încarce AI-ul
     await initOCR();
     
-    // CORECTURĂ: Pornim bucla direct, pentru că video-ul deja rulează în fundal!
+    // Pornim bucla direct
     scanLoop(); 
     
   } catch (err) {
@@ -159,23 +159,18 @@ async function scanLoop() {
     
     try {
       // 1. APLICĂM FILTRELE MAGICE ÎNAINTE DE A DESENA
-      // Grayscale: scoate culorile parbrizului
-      // Blur: umflă literele subțiri / punctele, făcându-le să se atingă
-      // Contrast: întărește zonele atinse transformându-le în litere groase și clare
       cropCtx.filter = 'grayscale(100%) contrast(300%) blur(1px)';
       
       // 2. Desenăm imaginea tăiată
       cropCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-      // --- ADAUGĂ ACEASTĂ LINIE AICI ---
-      enhanceImageForVIN(cropCtx, cropW, cropH);
-      // ---------------------------------
-
-      // AI-ul face magia...
-      // const { data: { text } } = await worker.recognize(cropCanvas);
-     
-      // Resetăm filtrul ca să nu afecteze alte operațiuni viitoare
+      
+      // 3. Resetăm filtrul CSS ca să nu afecteze get/put ImageData
       cropCtx.filter = 'none'; 
 
+      // 4. Aplicăm binarizarea noastră custom
+      enhanceImageForVIN(cropCtx, cropW, cropH);
+
+      // AI-ul face magia...
       statusLabel.innerText = "Se analizează imaginea...";
       const { data: { text } } = await worker.recognize(cropCanvas);
       
@@ -184,8 +179,9 @@ async function scanLoop() {
       ocrResult.innerText = cleanText.length > 0 ? cleanText : "-----------------";
       charCounter.innerText = `${cleanText.length} / 17 caractere`;
     
-      if (cleanText.length === 17 && x == cleanText) {
-        statusLabel.innerText = `VIN DETECTAT COMPLET! ${v1.value}`;
+      // AM ȘTERS VERIFICAREA CU "x == cleanText"
+      if (cleanText.length === 17) {
+        statusLabel.innerText = "VIN DETECTAT COMPLET!";
         statusLabel.style.color = "#34c759";
         viewfinder.style.borderColor = "#34c759";
       } else {
