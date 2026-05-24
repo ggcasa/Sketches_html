@@ -30,7 +30,7 @@
 <body>
 
 <div class="container">
-  <h2>Scanner VIN Auto (AI)</h2>
+  <!-- <input type="text" id="v1"> -->
   <p style="font-size: 14px; color: #8e8e93; margin-top: -10px;">Încadrați complet cele 17 caractere</p>
   
   <div class="scanner-container">
@@ -50,6 +50,7 @@
 </div>
 
 <script>
+const v1 = document.getElementById("v1");
 const video = document.getElementById('video');
 const btnStart = document.getElementById('btnStart');
 const statusLabel = document.getElementById('statusLabel');
@@ -99,6 +100,43 @@ btnStart.addEventListener('click', async () => {
   }
 });
 
+// Funcție pentru curățarea zgomotului vizual și pregătirea pentru Tesseract
+function enhanceImageForVIN(ctx, width, height) {
+  const imgData = ctx.getImageData(0, 0, width, height);
+  const data = imgData.data;
+  
+  // 1. Calculăm luminozitatea medie pentru a ști dacă fundalul e negru sau alb
+  let totalBrightness = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    totalBrightness += (data[i] + data[i+1] + data[i+2]) / 3;
+  }
+  const avgBrightness = totalBrightness / (width * height);
+  
+  // Dacă luminozitatea medie e sub 120, înseamnă că avem text luminos pe fundal întunecat.
+  const shouldInvert = avgBrightness < 120;
+
+  // 2. Binarizare și Inversare
+  for (let i = 0; i < data.length; i += 4) {
+    let gray = (data[i] + data[i+1] + data[i+2]) / 3;
+    
+    // Creștem contrastul masiv (Prag de binarizare)
+    if (gray > 130) gray = 255; // Alb pur
+    else gray = 0;              // Negru pur
+
+    // Dacă fundalul era întunecat, inversăm culorile (Tesseract iubește textul negru pe alb)
+    if (shouldInvert) {
+      gray = 255 - gray; 
+    }
+
+    data[i] = gray;     // R
+    data[i+1] = gray;   // G
+    data[i+2] = gray;   // B
+  }
+  
+  // Suprascriem canvas-ul cu imaginea curățată
+  ctx.putImageData(imgData, 0, 0);
+}
+
 async function scanLoop() {
   if (!isScanning || !worker) return;
 
@@ -128,7 +166,13 @@ async function scanLoop() {
       
       // 2. Desenăm imaginea tăiată
       cropCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-      
+      // --- ADAUGĂ ACEASTĂ LINIE AICI ---
+      enhanceImageForVIN(cropCtx, cropW, cropH);
+      // ---------------------------------
+
+      // AI-ul face magia...
+      // const { data: { text } } = await worker.recognize(cropCanvas);
+     
       // Resetăm filtrul ca să nu afecteze alte operațiuni viitoare
       cropCtx.filter = 'none'; 
 
@@ -139,9 +183,9 @@ async function scanLoop() {
 
       ocrResult.innerText = cleanText.length > 0 ? cleanText : "-----------------";
       charCounter.innerText = `${cleanText.length} / 17 caractere`;
-
-      if (cleanText.length === 17) {
-        statusLabel.innerText = "VIN DETECTAT COMPLET!";
+    
+      if (cleanText.length === 17 && x == cleanText) {
+        statusLabel.innerText = `VIN DETECTAT COMPLET! ${v1.value}`;
         statusLabel.style.color = "#34c759";
         viewfinder.style.borderColor = "#34c759";
       } else {
