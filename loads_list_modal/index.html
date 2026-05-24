@@ -43,7 +43,10 @@
 
     <dialog id="modal">
         <h3>Select</h3>
-        <ul id="lista"></ul>
+        <ul id="lista">
+            <input type="checkbox" checked name="loadX" id="loadX" disabled>
+            <label for="loadX">loadX</label>
+        </ul>
         <button id="closeBtn" style="padding: 10px; width: 100%;">Close</button>
     </dialog>
 
@@ -62,6 +65,7 @@
             const box = document.createElement('input');
             box.type = 'checkbox';
             box.id = `l_${i}`;
+            
             
             const label = document.createElement('label');
             label.htmlFor = `l_${i}`;

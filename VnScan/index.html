@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scanner VIN Parbriz</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0f0f12; color: #e4e4e7; margin: 0; padding: 15px; text-align: center; }
+    .container { max-width: 600px; margin: 0 auto; }
+    
+    /* Vizor ultra-îngust optimizat pentru fanta VIN de pe parbriz */
+    .scanner-container { position: relative; width: 100%; max-width: 550px; margin: 0 auto 15px auto; border-radius: 12px; overflow: hidden; background: #000; box-shadow: 0 10px 30px rgba(0,0,0,0.7); }
+    video { width: 100%; display: block; }
+    
+    /* Fanta de scanare lungă și îngustă */
+    .viewfinder { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 92%; height: 40px; border: 2px solid #ff3b30; border-radius: 4px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65); pointer-events: none; transition: border-color 0.3s; }
+    .viewfinder.active { border-color: #34c759; }
+    .viewfinder-aim { position: absolute; top: 50%; left: 0; width: 100%; height: 1px; background: rgba(255, 59, 48, 0.4); }
+
+    #processingCanvas { display: none; }
+    
+    .box { background: #1c1c1e; padding: 15px; border-radius: 10px; margin-bottom: 15px; border: 1px solid #2c2c2e; }
+    .result-title { font-size: 11px; color: #aeae Hellenic #8e8e93; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; }
+    
+    /* Display cod VIN separat în grupuri pentru lizibilitate */
+    .result { font-family: monospace; font-size: 24px; color: #30d158; font-weight: bold; letter-spacing: 3px; min-height: 30px; word-break: break-all; }
+    .counter { font-size: 12px; color: #8e8e93; margin-top: 5px; }
+    
+    button { background: #34c759; color: #000; border: none; padding: 14px 28px; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 8px; width: 100%; max-width: 550px; transition: 0.2s; }
+    button:hover { background: #2ed154; }
+    
+    .debug-title { font-size: 11px; color: #48484a; text-align: left; margin: 15px 0 5px 5px; }
+    .debug-strip { display: flex; gap: 2px; justify-content: space-between; background: #1c1c1e; padding: 6px; border-radius: 6px; overflow-x: auto; }
+    .debug-strip canvas { background: #000; border: 1px solid #3a3a3c; width: 5.5%; height: auto; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>Scanner Geometric VIN</h2>
+  <p style="font-size: 14px; color: #8e8e93; margin-top: -10px;">Aliniați cele 17 caractere în fanta roșie</p>
+  
+  <div class="scanner-container">
+    <video id="video" autoplay playsinline></video>
+    <div id="viewfinder" class="viewfinder">
+      <div class="viewfinder-aim"></div>
+    </div>
+  </div>
+
+  <button id="btnStart">Pornește Scanarea</button>
+
+  <div class="box">
+    <div class="result-title">Cod VIN Detectat</div>
+    <div id="ocrResult" class="result">-----------------</div>
+    <div id="charCounter" class="counter">Caractere valide: 0 / 17</div>
+  </div>
+
+  <div class="debug-title">Segmentare caractere binarizate în timp real:</div>
+  <div id="debugStrip" class="debug-strip"></div>
+
+  <canvas id="processingCanvas"></canvas>
+</div>
+
+<script>
+// ==========================================
+// 1. LIBRĂRIA GEOMETRICĂ OPTIMIZATĂ PENTRU VIN
+// ==========================================
+const VINFontOCR = {
+  gridSize: 10,
+  // Definiții geometrice compacte. Am eliminat literele I, O, Q conform standardului ISO 3779
+  glyphs: {
+    "0": [{type:"line",points:[[2,2],[2,8]]},{type:"line",points:[[8,2],[8,8]]},{type:"arc",center:[5,2],radius:3,startAngle:Math.PI,endAngle:0},{type:"arc",center:[5,8],radius:3,startAngle:0,endAngle:Math.PI}],
+    "1": [{type:"line",points:[[3,2],[5,0]]},{type:"line",points:[[5,0],[5,10]]},{type:"line",points:[[2,10],[8,10]]}],
+    "2": [{type:"arc",center:[5,3],radius:3,startAngle:Math.PI,endAngle:0},{type:"line",points:[[8,3],[2,10]]},{type:"line",points:[[2,10],[8,10]]}],
+    "3": [{type:"arc",center:[5,2.5],radius:2.5,startAngle:-Math.PI,endAngle:Math.PI/2},{type:"arc",center:[5,7.5],radius:2.5,startAngle:-Math.PI/2,endAngle:Math.PI}],
+    "4": [{type:"line",points:[[7,10],[7,0]]},{type:"line",points:[[7,0],[1,7]]},{type:"line",points:[[1,7],[9,7]]}],
+    "5": [{type:"line",points:[[8,0],[3,0]]},{type:"line",points:[[3,0],[2,4.5]]},{type:"arc",center:[5,5.5],radius:3.5,startAngle:-Math.PI*0.7,endAngle:Math.PI*0.7}],
+    "6": [{type:"arc",center:[5,6.5],radius:3.5,startAngle:0,endAngle:Math.PI*2},{type:"line",points:[[1.5,6.5],[3.5,0]]}],
+    "7": [{type:"line",points:[[2,0],[8,0]]},{type:"line",points:[[8,0],[3,10]]}],
+    "8": [{type:"arc",center:[5,2.7],radius:2.7,startAngle:0,endAngle:Math.PI*2},{type:"arc",center:[5,7.3],radius:2.7,startAngle:0,endAngle:Math.PI*2}],
+    "9": [{type:"arc",center:[5,3.5],radius:3.5,startAngle:0,endAngle:Math.PI*2},{type:"line",points:[[8.5,3.5],[5.5,10]]}],
+    "A": [{type:"line",points:[[1,10],[5,0]]},{type:"line",points:[[5,0],[9,10]]},{type:"line",points:[[3,6],[7,6]]}],
+    "B": [{type:"line",points:[[2,0],[2,10]]},{type:"line",points:[[2,0],[5,0]]},{type:"line",points:[[2,5],[5,5]]},{type:"line",points:[[2,10],[5,10]]},{type:"arc",center:[5,2.5],radius:2.5,startAngle:-Math.PI/2,endAngle:Math.PI/2},{type:"arc",center:[5,7.5],radius:2.5,startAngle:-Math.PI/2,endAngle:Math.PI/2}],
+    "C": [{type:"arc",center:[5,5],radius:4.5,startAngle:Math.PI*0.2,endAngle:Math.PI*1.8}],
+    "D": [{type:"line",points:[[2,0],[2,10]]},{type:"line",points:[[2,0],[4,0]]},{type:"arc",center:[4,5],radius:5,startAngle:-Math.PI/2,endAngle:Math.PI/2}],
+    "E": [{type:"line",points:[[2,0],[2,10]]},{type:"line",points:[[2,0],[8,0]]},{type:"line",points:[[2,5],[7,5]]},{type:"line",points:[[2,10],[8,10]]}],
+    "F": [{type:"line",points:[[2,0],[2,10]]},{type:"line",points:[[2,0],[8,0]]},{type:"line",points:[[2,5],[7,5]]}],
+    "G": [{type:"arc",center:[5,5],radius:4.5,startAngle:Math.PI*0.2,endAngle:Math.PI*1.8},{type:"line",points:[[5,5],[8,5]]},{type:"line",points:[[8,5],[8,8]]}],
+    "H": [{type:"line",points:[[2,0],[2,10]]},{type:"line",points:[[8,0],[8,10]]},{type:"line",points:[[2,5],[8,5]]}],
+    "J": [{type:"line",points:[[7,0],[7,7]]},{type:"arc",center:[4,7],radius:3,startAngle:0,endAngle:Math.PI}],
+    "K": [{type:"line",points:[[2,0],[2,10]]},{type:"line",points:[[7,0],[2,5]]},{type:"line",points:[[2,5],[8,10]]}],
+    "L": [{type:"line",points:[[2,0],[2,10]]},{type:"line",points:[[2,10],[8,10]]}],
+    "M": [{type:"line",points:[[1,10],[1,0]]},{type:"line",points:[[1,0],[5,5]]},{type:"line",points:[[5,5],[9,0]]},{type:"line",points:[[9,0],[9,10]]}],
+    "N": [{type:"line",points:[[2,10],[2,0]]},{type:"line",points:[[2,0],[8,10]]},{type:"line",points:[[8,10],[8,0]]}],
+    "P": [{type:"line",points:[[2,0],[2,10]]},{type:"line",points:[[2,0],[5,0]]},{type:"line",points:[[2,5],[5,5]]},{type:"arc",center:[5,2.5],radius:2.5,startAngle:-Math.PI/2,endAngle:Math.PI/2}],
+    "R": [{type:"line",points:[[2,0],[2,10]]},{type:"line",points:[[2,0],[5,0]]},{type:"line",points:[[2,5],[5,5]]},{type:"arc",center:[5,2.5],radius:2.5,startAngle:-Math.PI/2,endAngle:Math.PI/2},{type:"line",points:[[4,5],[8,10]]}],
+    "S": [{type:"arc",center:[5,2.7],radius:2.7,startAngle:Math.PI*0.4,endAngle:Math.PI*1.5},{type:"arc",center:[5,7.3],radius:2.7,startAngle:-Math.PI*0.5,endAngle:Math.PI*0.6}],
+    "T": [{type:"line",points:[[2,0],[8,0]]},{type:"line",points:[[5,0],[5,10]]}],
+    "U": [{type:"line",points:[[2,0],[2,6.5]]},{type:"line",points:[[8,0],[8,6.5]]},{type:"arc",center:[5,6.5],radius:3,startAngle:0,endAngle:Math.PI}],
+    "V": [{type:"line",points:[[1,0],[5,10]]},{type:"line",points:[[5,10],[9,0]]}],
+    "W": [{type:"line",points:[[1,0],[3,10]]},{type:"line",points:[[3,10],[5,3]]},{type:"line",points:[[5,3],[7,10]]},{type:"line",points:[[7,10],[9,0]]}],
+    "X": [{type:"line",points:[[1,0],[9,10]]},{type:"line",points:[[9,0],[1,10]]}],
+    "Y": [{type:"line",points:[[1,0],[5,5]]},{type:"line",points:[[9,0],[5,5]]},{type:"line",points:[[5,5],[5,10]]}],
+    "Z": [{type:"line",points:[[2,0],[8,0]]},{type:"line",points:[[8,0],[2,10]]},{type:"line",points:[[2,10],[8,10]]}]
+  },
+
+  recognize(charCtx, w, h) {
+    const imgData = charCtx.getImageData(0, 0, w, h);
+    const data = imgData.data;
+
+    const isPointDark = (gridX, gridY) => {
+      const rx = Math.min(w - 1, Math.max(0, Math.floor((gridX / this.gridSize) * w)));
+      const ry = Math.min(h - 1, Math.max(0, Math.floor((gridY / this.gridSize) * h)));
+      const idx = (ry * w + rx) * 4;
+      return data[idx] < 128; // Negru înseamnă text binarizat
+    };
+
+    let bestChar = "?";
+    let highestScore = -1;
+
+    for (const [char, shapes] of Object.entries(this.glyphs)) {
+      let hits = 0, total = 0;
+
+      shapes.forEach(shape => {
+        if (shape.type === "line") {
+          for (let t = 0; t <= 1; t += 0.2) {
+            total++;
+            if (isPointDark(shape.points[0][0] + (shape.points[1][0] - shape.points[0][0]) * t, shape.points[0][1] + (shape.points[1][1] - shape.points[0][1]) * t)) hits++;
+          }
+        } else if (shape.type === "arc") {
+          const steps = 8;
+          for (let i = 0; i <= steps; i++) {
+            total++;
+            const a = shape.startAngle + ((shape.endAngle - shape.startAngle) / steps) * i;
+            if (isPointDark(shape.center[0] + Math.cos(a) * shape.radius, shape.center[1] + Math.sin(a) * shape.radius)) hits++;
+          }
+        }
+      });
+
+      let score = hits / total;
+      
+      // Ajustări stricte anti-confuzie specifice fonturilor auto
+      if (char === "C" && score > 0.75 && isPointDark(8, 5)) score -= 0.4; // Clarificare C vs 0
+      if (char === "B" && score > 0.75 && !isPointDark(2, 5)) score -= 0.3; // Un B trebuie să aibă mijlocul legat
+
+      if (score > highestScore && score > 0.70) { // Prag ridicat la 70% pentru acuratețe VIN
+        highestScore = score;
+        bestChar = char;
+      }
+    }
+    return bestChar;
+  }
+};
+
+// ==========================================
+// 2. MANAGEMENTUL HARDWARE ȘI PROCESAREA VIDEO
+// ==========================================
+const video = document.getElementById('video');
+const btnStart = document.getElementById('btnStart');
+const procCanvas = document.getElementById('processingCanvas');
+const procCtx = procCanvas.getContext('2d', { willReadFrequently: true });
+const viewfinder = document.getElementById('viewfinder');
+const ocrResult = document.getElementById('ocrResult');
+const charCounter = document.getElementById('charCounter');
+const debugStrip = document.getElementById('debugStrip');
+
+let isScanning = false;
+const TOTAL_VIN_CHARS = 17; // Regula de aur ISO pentru VIN
+
+btnStart.addEventListener('click', async () => {
+  if (isScanning) return;
+  
+  try {
+    const constraints = {
+      video: {
+        facingMode: "environment",
+        // Solicităm rezoluție Full HD dacă e disponibilă pentru a prinde detaliile textului mic de pe parbriz
+        width: { ideal: 1920, min: 1280 },
+        height: { ideal: 1080, min: 720 }
+      },
+      audio: false
+    };
+
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = stream;
+    btnStart.style.display = "none";
+    viewfinder.classList.add('active');
+    isScanning = true;
+    
+    requestAnimationFrame(processFrame);
+  } catch (err) {
+    alert("Camera nu a putut fi pornită. Verificați permisiunile HTTPS. " + err.message);
+  }
+});
+
+function processFrame() {
+  if (!isScanning || video.readyState !== video.HAVE_ENOUGH_DATA) {
+    requestAnimationFrame(processFrame);
+    return;
+  }
+
+  // Sincronizare canvas grafic cu dimensiunea nativă a fluxului video de înaltă rezoluție
+  procCanvas.width = video.videoWidth;
+  procCanvas.height = video.videoHeight;
+  procCtx.drawImage(video, 0, 0, procCanvas.width, procCanvas.height);
+
+  // Mapare coordonate vizor din interfața CSS la pixelii reali ai camerei
+  const vLeft = (viewfinder.offsetLeft / video.offsetWidth) * procCanvas.width;
+  const vTop = (viewfinder.offsetTop / video.offsetHeight) * procCanvas.height;
+  const vWidth = (viewfinder.offsetWidth / video.offsetWidth) * procCanvas.width;
+  const vHeight = (viewfinder.offsetHeight / video.offsetHeight) * procCanvas.height;
+
+  // Extragere strictă a benzii unde se află VIN-ul
+  const croppedData = procCtx.getImageData(vLeft, vTop, vWidth, vHeight);
+  
+  // Executăm binarizarea (conversia pixelilor în alb/negru pur adaptiv)
+  binarizeAdaptive(croppedData);
+  procCtx.putImageData(croppedData, vLeft, vTop);
+
+  // Segmentare orizontală fixă în 17 ferestre perfect egale
+  const charWidth = vWidth / TOTAL_VIN_CHARS;
+  let detectedVIN = "";
+  let validCharCount = 0;
+
+  debugStrip.innerHTML = ""; // Curățare debug vizual cadru anterior
+
+  for (let i = 0; i < TOTAL_VIN_CHARS; i++) {
+    const segmentX = vLeft + (i * charWidth);
+    
+    // Canvas independent de rezoluție (28x28 este standardul ideal de procesare matriceală)
+    const miniCanvas = document.createElement('canvas');
+    miniCanvas.width = 28;
+    miniCanvas.height = 28;
+    const miniCtx = miniCanvas.getContext('2d');
+
+    // Copiem segmentul binarizat în fereastra normalizată
+    miniCtx.drawImage(procCanvas, segmentX, vTop, charWidth, vHeight, 0, 0, 28, 28);
+
+    // Citire geometrică a ferestrei active
+    const char = VINFontOCR.recognize(miniCtx, 28, 28);
+    detectedVIN += char;
+
+    if (char !== "?") {
+      validCharCount++;
+    }
+
+    // Atașăm mini-caracterele jos pentru feedback de calibrare
+    debugStrip.appendChild(miniCanvas);
+  }
+
+  // Actualizare UI
+  ocrResult.innerText = detectedVIN;
+  charCounter.innerText = `Caractere valide: ${validCharCount} / ${TOTAL_VIN_CHARS}`;
+
+  // Dacă am capturat un VIN stabil de 17 caractere, facem vizorul verde deschis ca indiciu de succes
+  if (validCharCount === TOTAL_VIN_CHARS) {
+    viewfinder.style.borderColor = "#30d158";
+  } else {
+    viewfinder.style.borderColor = "#ff3b30";
+  }
+
+  // Rulăm la ~15 cadre pe secundă (suficient și stabil pentru procesorul telefonului)
+  setTimeout(processFrame, 65);
+}
+
+/**
+ * Algoritm de binarizare cu prag dinamic ponderat pentru reflexiile parbrizului
+ */
+function binarizeAdaptive(imgData) {
+  const d = imgData.data;
+  let total = 0;
+  const len = d.length;
+
+  for (let i = 0; i < len; i += 4) {
+    total += (d[i] + d[i+1] + d[i+2]) / 3;
+  }
+  
+  // Prag adaptiv coborât la 82% din media luminozității 
+  // Ajută la izolarea caracterelor negre imprimate pe metal/plastic chiar și sub reflexia sticlei
+  const threshold = (total / (len / 4)) * 0.82;
+
+  for (let i = 0; i < len; i += 4) {
+    const gray = (d[i] + d[i+1] + d[i+2]) / 3;
+    const v = gray < threshold ? 0 : 255;
+    d[i] = v; d[i+1] = v; d[i+2] = v; d[i+3] = 255;
+  }
+}
+</script>
+
+</body>
+</html>
