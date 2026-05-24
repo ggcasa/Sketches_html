@@ -8,13 +8,8 @@
     body { font-family: -apple-system, sans-serif; background: #0f0f12; color: #e4e4e7; margin: 0; padding: 15px; text-align: center; }
     .container { max-width: 500px; margin: 0 auto; }
     
-    /* Container fix, nu mai ocupă tot ecranul, previne lăbărțarea */
     .scanner-container { position: relative; width: 100%; height: 320px; max-width: 450px; margin: 0 auto 15px auto; border-radius: 12px; overflow: hidden; background: #000; }
-    
-    /* Video-ul își păstrează proporțiile naturale tăind marginile în plus */
     video { width: 100%; height: 100%; object-fit: cover; display: block; }
-    
-    /* Vizorul centrat perfect pe ecran */
     .viewfinder { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 95%; height: 45px; border: 2px solid #ff3b30; border-radius: 4px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.7); pointer-events: none; transition: border-color 0.3s; }
     
     .box { background: #1c1c1e; padding: 15px; border-radius: 10px; margin-bottom: 15px; border: 1px solid #2c2c2e; }
@@ -22,11 +17,14 @@
     .result { font-family: monospace; font-size: 24px; color: #ffffff; font-weight: bold; letter-spacing: 2px; min-height: 30px; word-break: break-all; }
     .counter { font-size: 12px; color: #8e8e93; margin-top: 5px; }
     
-    button { background: #ff3b30; color: #fff; border: none; padding: 14px 28px; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 8px; width: 100%; max-width: 450px; margin-bottom: 15px; }
+    .button-group { display: flex; gap: 10px; max-width: 450px; margin: 0 auto 15px auto; }
+    button { color: #000; border: none; padding: 14px 20px; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 8px; flex: 1; transition: 0.2s; }
+    #btnAction { background: #ff9500; }
+    #btnAction.active { background: #ff3b30; color: #fff; }
+    #btnCopy { background: #0a84ff; color: #fff; display: none; }
+    #btnCopy:active { background: #0060d1; }
     
-    .debug-label { font-size: 12px; color: #888; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px;}
-    
-    /* Canvas-ul de debug vizibil, unde vei vedea filtrul acționând */
+    .debug-label { font-size: 11px; color: #888; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px; }
     #cropCanvas { display: block; width: 100%; max-width: 450px; height: auto; border: 1px solid #333; margin: 5px auto; background: #000; }
   </style>
 
@@ -43,7 +41,10 @@
     <div id="viewfinder" class="viewfinder"></div>
   </div>
 
-  <button id="btnStart">Pornește Camera</button>
+  <div class="button-group">
+    <button id="btnAction">Pornește Camera</button>
+    <button id="btnCopy">Copiază VIN</button>
+  </div>
 
   <div class="box">
     <div id="statusLabel" class="status">Așteptare cameră...</div>
@@ -51,13 +52,14 @@
     <div id="charCounter" class="counter">0 / 17 caractere</div>
   </div>
 
-  <div class="debug-label">Ce citește motorul AI chiar acum:</div>
+  <div class="debug-label">Analiză Optică:</div>
   <canvas id="cropCanvas"></canvas>
 </div>
 
 <script>
 const video = document.getElementById('video');
-const btnStart = document.getElementById('btnStart');
+const btnAction = document.getElementById('btnAction');
+const btnCopy = document.getElementById('btnCopy');
 const statusLabel = document.getElementById('statusLabel');
 const ocrResult = document.getElementById('ocrResult');
 const charCounter = document.getElementById('charCounter');
@@ -65,145 +67,149 @@ const cropCanvas = document.getElementById('cropCanvas');
 const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true });
 const viewfinder = document.getElementById('viewfinder');
 
-let isScanning = false;
+let isCameraOn = false;
+let isPaused = false;
 let worker = null;
 
-// Inițializare Tesseract cu filtru strict pentru VIN
 async function initOCR() {
   statusLabel.innerText = "Se încarcă motorul AI...";
   worker = await Tesseract.createWorker('eng');
-  
-  // Excludem I, O, Q și caracterele mici conform standardului ISO 3779
   await worker.setParameters({
     tessedit_char_whitelist: '0123456789ABCDEFGHJKLMNPRSTUVWXYZ',
   });
-
   statusLabel.innerText = "Sistem Pregătit. Scanați!";
   statusLabel.style.color = "#34c759";
 }
 
-// Pornire cameră
-btnStart.addEventListener('click', async () => {
-  if (isScanning) return;
+btnAction.addEventListener('click', async () => {
+  if (!isCameraOn) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1080 }, height: { ideal: 1920 } },
+        audio: false
+      });
+      video.srcObject = stream;
+      isCameraOn = true;
+      btnAction.innerText = "Pauză Scanare";
+      btnAction.classList.add("active");
 
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      // Forțăm format Portrait (vertical) pentru a corespunde felului în care ții telefonul
-      video: { facingMode: "environment", width: { ideal: 1080 }, height: { ideal: 1920 } },
-      audio: false
-    });
-    
-    video.srcObject = stream;
-    btnStart.style.display = "none";
-    isScanning = true;
-
-    await initOCR();
-    video.addEventListener('playing', scanLoop);
-  } catch (err) {
-    alert("Eroare acces cameră: " + err.message);
+      await initOCR();
+      
+      // FIX-UL AICI: Am eliminat "evenimentul" care rata startul și apelăm bucla direct.
+      scanLoop(); 
+      
+    } catch (err) {
+      alert("Eroare acces cameră: " + err.message);
+    }
+  } else {
+    isPaused = !isPaused;
+    if (isPaused) {
+      btnAction.innerText = "Reluare Scanare";
+      btnAction.classList.remove("active");
+      btnCopy.style.display = "block";
+      statusLabel.innerText = "Scanare Oprită.";
+    } else {
+      btnAction.innerText = "Pauză Scanare";
+      btnAction.classList.add("active");
+      btnCopy.style.display = "none";
+      statusLabel.innerText = "Se scanează...";
+      statusLabel.style.color = "#ff3b30";
+      viewfinder.style.borderColor = "#ff3b30";
+    }
   }
 });
 
-// Filtrul "Anti-Teren" - Curăță zgomotul vizual, reflexiile sticlei și face textul alb-negru
-function enhanceImageForVIN(ctx, width, height) {
+btnCopy.addEventListener('click', () => {
+  const textToCopy = ocrResult.innerText;
+  if (textToCopy && textToCopy !== "-----------------") {
+    navigator.clipboard.writeText(textToCopy).then(() => {
+      const originalText = btnCopy.innerText;
+      btnCopy.innerText = "Cod Copiat!";
+      btnCopy.style.background = "#34c759";
+      setTimeout(() => {
+        btnCopy.innerText = originalText;
+        btnCopy.style.background = "#0a84ff";
+      }, 2000);
+    }).catch(err => {
+      alert("Nu am putut copia codul: " + err);
+    });
+  }
+});
+
+function applyHighContrast(ctx, width, height) {
   const imgData = ctx.getImageData(0, 0, width, height);
   const data = imgData.data;
   
-  let totalBrightness = 0;
-  for (let i = 0; i < data.length; i += 4) {
-    totalBrightness += (data[i] + data[i+1] + data[i+2]) / 3;
-  }
-  const avgBrightness = totalBrightness / (width * height);
-  const shouldInvert = avgBrightness < 120; // Dacă e întunecat, inversăm pentru Tesseract
-
   for (let i = 0; i < data.length; i += 4) {
     let gray = (data[i] + data[i+1] + data[i+2]) / 3;
-    
-    // Binarizare puternică: peste prag devine alb pur, sub prag devine negru pur
-    gray = gray > 110 ? 255 : 0;
-
-    if (shouldInvert) {
-      gray = 255 - gray; 
-    }
-
-    data[i] = gray;     // R
-    data[i+1] = gray;   // G
-    data[i+2] = gray;   // B
+    gray = (gray - 128) * 1.8 + 128; 
+    gray = Math.max(0, Math.min(255, gray)); 
+    data[i] = gray; 
+    data[i+1] = gray; 
+    data[i+2] = gray;
+    data[i+3] = 255; // Forțăm opacitatea maximă ca să nu apară erori de transparență
   }
   ctx.putImageData(imgData, 0, 0);
 }
 
-// Bucla principală de analiză a cadrelor
 async function scanLoop() {
-  if (!isScanning || !worker) return;
+  if (!isCameraOn || !worker) return;
+  
+  if (isPaused) {
+    setTimeout(scanLoop, 500);
+    return;
+  }
 
+  // Aici așteaptă oricum până când camera livrează o rezoluție reală
   if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
     
-    // Matematică ajustată pentru "object-fit: cover"
-    const videoRatio = video.videoWidth / video.videoHeight;
-    const containerRatio = video.offsetWidth / video.offsetHeight;
-    
-    let drawWidth = video.offsetWidth;
-    let drawHeight = video.offsetHeight;
-    let offsetX = 0;
-    let offsetY = 0;
-
-    // Calculăm exact cât din video e tăiat "invizibil" de marginile CSS-ului
-    if (videoRatio > containerRatio) {
-      drawWidth = video.offsetHeight * videoRatio;
-      offsetX = (video.offsetWidth - drawWidth) / 2;
-    } else {
-      drawHeight = video.offsetWidth / videoRatio;
-      offsetY = (video.offsetHeight - drawHeight) / 2;
-    }
-
-    const scaleX = video.videoWidth / drawWidth;
-    const scaleY = video.videoHeight / drawHeight;
-
-    const viewRect = viewfinder.getBoundingClientRect();
     const videoRect = video.getBoundingClientRect();
+    const viewRect = viewfinder.getBoundingClientRect();
+    
+    const scale = Math.max(videoRect.width / video.videoWidth, videoRect.height / video.videoHeight);
+    const dx = (videoRect.width - (video.videoWidth * scale)) / 2;
+    const dy = (videoRect.height - (video.videoHeight * scale)) / 2;
 
-    // Mapare precisă de la ecran la pixelii senzorului camerei
-    const cropX = Math.round((viewRect.left - videoRect.left - offsetX) * scaleX);
-    const cropY = Math.round((viewRect.top - videoRect.top - offsetY) * scaleY);
-    const cropW = Math.max(1, Math.round(viewRect.width * scaleX));
-    const cropH = Math.max(1, Math.round(viewRect.height * scaleY));
+    const cropX = Math.round(((viewRect.left - videoRect.left) - dx) / scale);
+    const cropY = Math.round(((viewRect.top - videoRect.top) - dy) / scale);
+    const cropW = Math.max(1, Math.round(viewRect.width / scale));
+    const cropH = Math.max(1, Math.round(viewRect.height / scale));
 
     cropCanvas.width = cropW;
     cropCanvas.height = cropH;
     
     try {
-      // 1. Tăiem doar felia de interes
       cropCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-      
-      // 2. Aplicăm filtrul magic pentru VIN (repară textul de sub parbriz)
-      enhanceImageForVIN(cropCtx, cropW, cropH);
+      applyHighContrast(cropCtx, cropW, cropH);
 
-      // 3. Trimitem imaginea alb-negru către motorul AI
       const { data: { text } } = await worker.recognize(cropCanvas);
-      
-      // 4. Eliminăm gunoaiele din string (păstrăm strict formatul auto)
       const cleanText = text.replace(/[^A-Z0-9]/g, '').trim();
 
-      ocrResult.innerText = cleanText.length > 0 ? cleanText : "-----------------";
-      charCounter.innerText = `${cleanText.length} / 17 caractere`;
+      if (cleanText.length > 0) {
+        ocrResult.innerText = cleanText;
+        charCounter.innerText = `${cleanText.length} / 17 caractere`;
+      }
 
-      // 5. Validare UI
       if (cleanText.length === 17) {
-        statusLabel.innerText = "VIN DETECTAT COMPLET!";
+        statusLabel.innerText = "VIN VALIDAT! Scanare oprită.";
         statusLabel.style.color = "#34c759";
         viewfinder.style.borderColor = "#34c759";
+        
+        isPaused = true;
+        btnAction.innerText = "Reluare Scanare";
+        btnAction.classList.remove("active");
+        btnCopy.style.display = "block"; 
       } else {
         statusLabel.innerText = "Se scanează...";
         statusLabel.style.color = "#ff3b30";
         viewfinder.style.borderColor = "#ff3b30";
       }
     } catch (err) {
-      console.warn("Cadru ignorat:", err);
+      console.warn("Eroare la procesarea cadrului:", err);
     }
   }
   
-  // Procesăm cadrul din secundă în secundă (ideal pentru mobil)
+  // Rulează o dată pe secundă
   setTimeout(scanLoop, 1000);
 }
 </script>
