@@ -3,26 +3,28 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OCR using Tesseract.js</title>
+  <title>Scanner Smart OCR PWA</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0f0f12; color: #e4e4e7; margin: 0; padding: 15px; text-align: center; }
     .container { max-width: 500px; margin: 0 auto; }
     
-    /* Containerul video cu vizor overlay */
-    .scanner-container { position: relative; width: 100%; max-width: 450px; margin: 0 auto 15px auto; border-radius: 12px; overflow: hidden; background: #000; }
-    video { width: 100%; display: block; }
+    /* Container video care previne letterboxing-ul pe mobil */
+    .scanner-container { position: relative; width: 100%; max-width: 450px; margin: 0 auto 15px auto; border-radius: 12px; overflow: hidden; background: #000; display: flex; justify-content: center; align-items: center; }
     
-    /* Vizorul subțire pentru alinierea textului/VIN-ului */
-    .viewfinder { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 85%; height: 50px; border: 2px solid #00ffcc; border-radius: 6px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6); pointer-events: none; }
+    /* object-fit: cover ajută la umplerea ecranului fără dungi negre */
+    video { width: 100%; height: auto; display: block; }
+    
+    .viewfinder { position: absolute; width: 85%; height: 50px; border: 2px solid #00ffcc; border-radius: 6px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6); pointer-events: none; }
 
     .box { background: #1c1c1e; padding: 15px; border-radius: 10px; margin-bottom: 15px; border: 1px solid #2c2c2e; }
     .status { font-size: 13px; color: #00ffcc; margin-bottom: 5px; min-height: 18px; }
     .result { font-family: monospace; font-size: 22px; color: #ffffff; font-weight: bold; letter-spacing: 1px; min-height: 30px; word-break: break-all; }
     
-    button { background: #00ffcc; color: #000; border: none; padding: 14px 28px; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 8px; width: 100%; max-width: 450px; }
+    button { background: #00ffcc; color: #000; border: none; padding: 14px 28px; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 8px; width: 100%; max-width: 450px; margin-bottom: 15px; }
     
-    /* Canvas-ul ascuns pe care decupăm poza pentru Tesseract */
-    #cropCanvas { display: none; }
+    .debug-label { font-size: 12px; color: #888; margin-top: 10px; }
+    /* Am făcut Canvas-ul VIZIBIL ca să vezi exact ce decupează matematica pe telefonul tău */
+    #cropCanvas { display: block; width: 100%; max-width: 450px; border: 2px dashed #ff3b30; margin: 5px auto; background: #000; }
   </style>
 
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -31,20 +33,21 @@
 
 <div class="container">
   <h2>Scanner Smart OCR</h2>
-  <p style="font-size: 14px; color: #8e8e93; margin-top: -10px;">Aliniați textul sau codul VIN în vizorul verde</p>
+  <p style="font-size: 14px; color: #8e8e93; margin-top: -10px;">Aliniați textul în vizorul verde</p>
   
   <div class="scanner-container">
     <video id="video" autoplay playsinline></video>
-    <div class="viewfinder"></div>
+    <div id="viewfinder" class="viewfinder"></div>
   </div>
 
   <button id="btnStart">Pornește Camera</button>
 
-  <div class="box" style="margin-top: 15px;">
+  <div class="box">
     <div id="statusLabel" class="status">Așteptare cameră...</div>
     <div id="ocrResult" class="result">---</div>
   </div>
 
+  <div class="debug-label">Ce vede inteligența artificială (Debug):</div>
   <canvas id="cropCanvas"></canvas>
 </div>
 
@@ -54,34 +57,28 @@ const btnStart = document.getElementById('btnStart');
 const statusLabel = document.getElementById('statusLabel');
 const ocrResult = document.getElementById('ocrResult');
 const cropCanvas = document.getElementById('cropCanvas');
-const cropCtx = cropCanvas.getContext('2d');
+const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true });
+const viewfinder = document.getElementById('viewfinder');
 
 let isScanning = false;
 let worker = null;
 
-// 1. INIȚIALIZARE TESSERACT WORKER (În fundal)
 async function initOCR() {
-  statusLabel.innerText = "Se încarcă motorul AI Tesseract...";
-  
-  // Creăm un procesator Tesseract (worker) pentru limba engleză (caractere standard)
+  statusLabel.innerText = "Se încarcă motorul AI...";
   worker = await Tesseract.createWorker('eng');
   
-  // Setări opționale pentru a-l face mai rapid și precis la coduri/VIN-uri:
-  // Îi spunem să caute doar litere mari și cifre, eliminând din start erorile de caractere speciale
-  await worker.setParameters({
-    tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ',
-  });
+  // ATENȚIE: Am scos complet setarea de "whitelist" cu litere mari.
+  // Acum recunoaște și litere mici, spații, sau semne de punctuație.
 
   statusLabel.innerText = "Motor AI Pregătit. Scanați...";
 }
 
-// 2. PORNIRE CAMERĂ TELEFON
 btnStart.addEventListener('click', async () => {
   if (isScanning) return;
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+      video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
       audio: false
     });
     
@@ -89,68 +86,63 @@ btnStart.addEventListener('click', async () => {
     btnStart.style.display = "none";
     isScanning = true;
 
-    // Inițializăm AI-ul în timp ce pornește camera
     await initOCR();
     
-    // Începem ciclul de scanare repetitivă
-    scanLoop();
+    // Începem procesarea după ce video-ul are date
+    video.addEventListener('loadeddata', scanLoop);
   } catch (err) {
-    alert("Eroare la accesarea camerei: " + err.message);
+    alert("Eroare acces cameră: " + err.message);
   }
 });
 
-// 3. CICLUL DE SCANARE (Capturează vizorul -> Trimite la Tesseract)
 async function scanLoop() {
   if (!isScanning || !worker) return;
 
   if (video.readyState === video.HAVE_ENOUGH_DATA) {
     statusLabel.innerText = "Se analizează cadrul...";
 
-    const viewfinder = document.querySelector('.viewfinder');
-    
-    // Obținem coordonatele reale de pe ecran ale elementelor
+    // 1. Calculăm geometria exactă pentru decupajul de pe mobil
     const videoRect = video.getBoundingClientRect();
     const viewRect = viewfinder.getBoundingClientRect();
 
-    // Calculăm poziția vizorului relativă la colțul video-ului de pe ecran
-    const relativeLeft = viewRect.left - videoRect.left;
-    const relativeTop = viewRect.top - videoRect.top;
-
-    // Calculăm proporțiile (scala) dintre rezoluția nativă a camerei și mărimea de pe ecran
+    // Factorul real de scalare dintre rezoluția nativă a camerei și mărimea de pe ecran
     const scaleX = video.videoWidth / videoRect.width;
     const scaleY = video.videoHeight / videoRect.height;
 
-    // Calculăm decupajul final exact în pixeli nativi
-    const cropX = relativeLeft * scaleX;
-    const cropY = relativeTop * scaleY;
+    // Coordonatele vizorului tăiate precis
+    const cropX = (viewRect.left - videoRect.left) * scaleX;
+    const cropY = (viewRect.top - videoRect.top) * scaleY;
     const cropW = viewRect.width * scaleX;
     const cropH = viewRect.height * scaleY;
 
-    // Ajustăm canvas-ul și desenăm DOAR zona din interiorul vizorului verde
+    // 2. Setăm canvas-ul și desenăm felia
     cropCanvas.width = cropW;
     cropCanvas.height = cropH;
+    
+    // Curățăm canvas-ul înainte de desenare (previne artefacte)
+    cropCtx.clearRect(0, 0, cropW, cropH);
     cropCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
     try {
+      // 3. Trimitem imaginea decupată către Tesseract
       const { data: { text } } = await worker.recognize(cropCanvas);
       
-      // Curățăm textul DOAR de liniile noi (Enter), dar păstrăm spațiile între cuvinte
       const cleanText = text.replace(/\n/g, '').trim();
 
-      if (cleanText.length > 3) { // Afișează doar dacă a găsit măcar 3 caractere
+      if (cleanText.length > 2) {
         ocrResult.innerText = cleanText;
-        statusLabel.innerText = "Text detectat cu succes!";
+        statusLabel.innerText = "Text detectat!";
       } else {
-        statusLabel.innerText = "Poziționați textul în vizor...";
+        statusLabel.innerText = "Poziționați textul...";
       }
-
     } catch (ocrError) {
       console.error("Eroare OCR:", ocrError);
     }
   }
 
-  // Pauză pentru a nu bloca browserul
-  setTimeout(scanLoop, 1000); 
+  // Pe mobil lăsăm puțin mai mult timp de respirație (1200ms) 
+  // ca să nu supraîncălzim telefonul Pixel 10 și bateria
+  setTimeout(scanLoop, 1200);
 }
 </script>
 
