@@ -81,6 +81,21 @@ async function initOCR() {
   statusLabel.style.color = "#34c759";
 }
 
+function triggerSuccessFeedback() {
+  if ("vibrate" in navigator) navigator.vibrate([150, 50, 150]);
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(880, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(1760, ctx.currentTime + 0.1);
+  gain.gain.setValueAtTime(0, ctx.currentTime);
+  gain.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 0.05);
+  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+  osc.connect(gain); gain.connect(ctx.destination);
+  osc.start(); osc.stop(ctx.currentTime + 0.3);
+}
+
 btnAction.addEventListener('click', async () => {
   if (!isCameraOn) {
     try {
@@ -199,10 +214,12 @@ async function scanLoop() {
         btnAction.innerText = "Reluare Scanare";
         btnAction.classList.remove("active");
         btnCopy.style.display = "block"; 
+        if (!feedbackPlayed) { triggerSuccessFeedback(); feedbackPlayed = true; }
       } else {
         statusLabel.innerText = "Se scanează...";
         statusLabel.style.color = "#ff3b30";
         viewfinder.style.borderColor = "#ff3b30";
+        feedbackPlayed = false;
       }
     } catch (err) {
       console.warn("Eroare la procesarea cadrului:", err);
