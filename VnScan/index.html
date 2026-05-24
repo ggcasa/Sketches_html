@@ -20,7 +20,7 @@
     #processingCanvas { display: none; }
     
     .box { background: #1c1c1e; padding: 15px; border-radius: 10px; margin-bottom: 15px; border: 1px solid #2c2c2e; }
-    .result-title { font-size: 11px; color: #aeae Hellenic #8e8e93; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; }
+    .result-title { font-size: 11px; color: #8e8e93; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; }
     
     /* Display cod VIN separat în grupuri pentru lizibilitate */
     .result { font-family: monospace; font-size: 24px; color: #30d158; font-weight: bold; letter-spacing: 3px; min-height: 30px; word-break: break-all; }
@@ -67,7 +67,6 @@
 // ==========================================
 const VINFontOCR = {
   gridSize: 10,
-  // Definiții geometrice compacte. Am eliminat literele I, O, Q conform standardului ISO 3779
   glyphs: {
     "0": [{type:"line",points:[[2,2],[2,8]]},{type:"line",points:[[8,2],[8,8]]},{type:"arc",center:[5,2],radius:3,startAngle:Math.PI,endAngle:0},{type:"arc",center:[5,8],radius:3,startAngle:0,endAngle:Math.PI}],
     "1": [{type:"line",points:[[3,2],[5,0]]},{type:"line",points:[[5,0],[5,10]]},{type:"line",points:[[2,10],[8,10]]}],
@@ -112,7 +111,7 @@ const VINFontOCR = {
       const rx = Math.min(w - 1, Math.max(0, Math.floor((gridX / this.gridSize) * w)));
       const ry = Math.min(h - 1, Math.max(0, Math.floor((gridY / this.gridSize) * h)));
       const idx = (ry * w + rx) * 4;
-      return data[idx] < 128; // Negru înseamnă text binarizat
+      return data[idx] < 128; 
     };
 
     let bestChar = "?";
@@ -139,11 +138,10 @@ const VINFontOCR = {
 
       let score = hits / total;
       
-      // Ajustări stricte anti-confuzie specifice fonturilor auto
-      if (char === "C" && score > 0.75 && isPointDark(8, 5)) score -= 0.4; // Clarificare C vs 0
-      if (char === "B" && score > 0.75 && !isPointDark(2, 5)) score -= 0.3; // Un B trebuie să aibă mijlocul legat
+      if (char === "C" && score > 0.75 && isPointDark(8, 5)) score -= 0.4;
+      if (char === "B" && score > 0.75 && !isPointDark(2, 5)) score -= 0.3;
 
-      if (score > highestScore && score > 0.70) { // Prag ridicat la 70% pentru acuratețe VIN
+      if (score > highestScore && score > 0.70) { 
         highestScore = score;
         bestChar = char;
       }
@@ -165,7 +163,7 @@ const charCounter = document.getElementById('charCounter');
 const debugStrip = document.getElementById('debugStrip');
 
 let isScanning = false;
-const TOTAL_VIN_CHARS = 17; // Regula de aur ISO pentru VIN
+const TOTAL_VIN_CHARS = 17; 
 
 btnStart.addEventListener('click', async () => {
   if (isScanning) return;
@@ -174,7 +172,6 @@ btnStart.addEventListener('click', async () => {
     const constraints = {
       video: {
         facingMode: "environment",
-        // Solicităm rezoluție Full HD dacă e disponibilă pentru a prinde detaliile textului mic de pe parbriz
         width: { ideal: 1920, min: 1280 },
         height: { ideal: 1080, min: 720 }
       },
@@ -199,44 +196,53 @@ function processFrame() {
     return;
   }
 
-  // Sincronizare canvas grafic cu dimensiunea nativă a fluxului video de înaltă rezoluție
+  // Sincronizare canvas grafic cu dimensiunea nativă a fluxului video
   procCanvas.width = video.videoWidth;
   procCanvas.height = video.videoHeight;
   procCtx.drawImage(video, 0, 0, procCanvas.width, procCanvas.height);
 
-  // Mapare coordonate vizor din interfața CSS la pixelii reali ai camerei
-  const vLeft = (viewfinder.offsetLeft / video.offsetWidth) * procCanvas.width;
-  const vTop = (viewfinder.offsetTop / video.offsetHeight) * procCanvas.height;
-  const vWidth = (viewfinder.offsetWidth / video.offsetWidth) * procCanvas.width;
-  const vHeight = (viewfinder.offsetHeight / video.offsetHeight) * procCanvas.height;
+  // ========================================================
+  // CORECTURĂ: Mapare corectă a coordonatelor (getBoundingClientRect)
+  // ========================================================
+  const videoRect = video.getBoundingClientRect();
+  const viewRect = viewfinder.getBoundingClientRect();
 
-  // Extragere strictă a benzii unde se află VIN-ul
+  // Calculăm poziția relativă a vizorului față de colțul video-ului pe ecran
+  const relativeLeft = viewRect.left - videoRect.left;
+  const relativeTop = viewRect.top - videoRect.top;
+
+  // Calculăm factorul de scalare
+  const scaleX = procCanvas.width / videoRect.width;
+  const scaleY = procCanvas.height / videoRect.height;
+
+  // Obținem coordonatele precise pentru crop din imaginea reală
+  const vLeft = relativeLeft * scaleX;
+  const vTop = relativeTop * scaleY;
+  const vWidth = viewRect.width * scaleX;
+  const vHeight = viewRect.height * scaleY;
+  // ========================================================
+
   const croppedData = procCtx.getImageData(vLeft, vTop, vWidth, vHeight);
   
-  // Executăm binarizarea (conversia pixelilor în alb/negru pur adaptiv)
   binarizeAdaptive(croppedData);
   procCtx.putImageData(croppedData, vLeft, vTop);
 
-  // Segmentare orizontală fixă în 17 ferestre perfect egale
   const charWidth = vWidth / TOTAL_VIN_CHARS;
   let detectedVIN = "";
   let validCharCount = 0;
 
-  debugStrip.innerHTML = ""; // Curățare debug vizual cadru anterior
+  debugStrip.innerHTML = ""; 
 
   for (let i = 0; i < TOTAL_VIN_CHARS; i++) {
     const segmentX = vLeft + (i * charWidth);
     
-    // Canvas independent de rezoluție (28x28 este standardul ideal de procesare matriceală)
     const miniCanvas = document.createElement('canvas');
     miniCanvas.width = 28;
     miniCanvas.height = 28;
     const miniCtx = miniCanvas.getContext('2d');
 
-    // Copiem segmentul binarizat în fereastra normalizată
     miniCtx.drawImage(procCanvas, segmentX, vTop, charWidth, vHeight, 0, 0, 28, 28);
 
-    // Citire geometrică a ferestrei active
     const char = VINFontOCR.recognize(miniCtx, 28, 28);
     detectedVIN += char;
 
@@ -244,28 +250,21 @@ function processFrame() {
       validCharCount++;
     }
 
-    // Atașăm mini-caracterele jos pentru feedback de calibrare
     debugStrip.appendChild(miniCanvas);
   }
 
-  // Actualizare UI
   ocrResult.innerText = detectedVIN;
   charCounter.innerText = `Caractere valide: ${validCharCount} / ${TOTAL_VIN_CHARS}`;
 
-  // Dacă am capturat un VIN stabil de 17 caractere, facem vizorul verde deschis ca indiciu de succes
   if (validCharCount === TOTAL_VIN_CHARS) {
     viewfinder.style.borderColor = "#30d158";
   } else {
     viewfinder.style.borderColor = "#ff3b30";
   }
 
-  // Rulăm la ~15 cadre pe secundă (suficient și stabil pentru procesorul telefonului)
   setTimeout(processFrame, 65);
 }
 
-/**
- * Algoritm de binarizare cu prag dinamic ponderat pentru reflexiile parbrizului
- */
 function binarizeAdaptive(imgData) {
   const d = imgData.data;
   let total = 0;
@@ -275,8 +274,6 @@ function binarizeAdaptive(imgData) {
     total += (d[i] + d[i+1] + d[i+2]) / 3;
   }
   
-  // Prag adaptiv coborât la 82% din media luminozității 
-  // Ajută la izolarea caracterelor negre imprimate pe metal/plastic chiar și sub reflexia sticlei
   const threshold = (total / (len / 4)) * 0.82;
 
   for (let i = 0; i < len; i += 4) {
