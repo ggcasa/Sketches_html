@@ -18,15 +18,15 @@
       <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
+    <div class="butoane">
+        <button id="playbtn">Scan</button>
+    </div>
     <div id="outputOCR"></div>
     <div id="capturev">
         <video id="video" autoplay playsinline muted></video>
     </div>
     <canvas></canvas>
     <canvas></canvas>
-    <div class="butoane">
-        <button id="playbtn">Scan</button>
-    </div>
     <script>
         const outputOCR = document.getElementById('outputOCR');
         const video = document.getElementById('video');
