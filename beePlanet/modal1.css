@@ -1,0 +1,14 @@
+#loads {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  overflow-y: auto;
+  flex-grow: 1;
+}
+
+.load-item {
+  border: 1px solid var(--border);
+  padding: 15px 5px;
+  text-align: center;
+  font-weight: bold;
+  color: var(--text);
+}

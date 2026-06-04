@@ -1,0 +1,86 @@
+@import url('./modal1.css');
+
+* { box-sizing: border-box; }
+
+:root {
+  --bg: #ffffff;
+  --text: #000000;
+  --border: #cccccc;
+}
+
+/* LOGICA TEMĂ - Aplică fundalul și textul corect pe toate containerele */
+#theme-toggle:checked ~ nav,
+#theme-toggle:checked ~ .modal,
+#theme-toggle:checked ~ body {
+  --bg: #000000;
+  --text: #ffffff;
+  --border: #444444;
+}
+
+body { 
+  margin: 0; 
+  background-color: var(--bg); 
+  color: var(--text); 
+  font-family: sans-serif; 
+}
+
+/* NAVIGAȚIE 2x3 */
+nav {
+  background-color: var(--bg); /* Asigură fundalul temei */
+}
+
+nav ol {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: repeat(3, 1fr);
+  height: 100vh;
+  margin: 0; padding: 0; list-style: none;
+}
+
+nav ol li { 
+  border: 1px solid var(--border); 
+}
+
+nav ol li a {
+  display: flex; height: 100%; align-items: center; justify-content: center;
+  text-decoration: none; font-size: 6vh; font-weight: bold; 
+  color: var(--text); /* Textul devine alb în Dark Mode */
+}
+
+/* MODAL FIX */
+.modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.9);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+.modal:target { display: flex; }
+
+.modal-content {
+  background-color: var(--bg);
+  color: var(--text);
+  border: 4px solid var(--border);
+  width: 98%;
+  max-width: 500px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* CELE 3 COLOANE PARALELE L | R | T */
+/* acum in modal1.css */
+
+.close {
+  display: block;
+  text-align: center;
+  padding: 15px;
+  color: #ff4444;
+  text-decoration: none;
+  font-weight: bold;
+  border-top: 2px solid var(--border);
+}
+
+#theme-toggle { position: absolute; opacity: 0; }

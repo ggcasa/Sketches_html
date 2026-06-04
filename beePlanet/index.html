@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bee Planet</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+ <input type="checkbox" id="theme-toggle" hidden>
+
+<nav>
+  <ol>
+    <li><a href="#modal1">1</a></li>
+    <li><a href="#modal2">2</a></li>
+    <li><a href="#modal3">3</a></li>
+    <li><a href="#modal4">4</a></li>
+    <li><a href="#modal5">5</a></li>
+    <li><a href="#settings">&#9881;</a></li>
+  </ol>
+</nav>
+
+<!-- Modale pentru fiecare casetă -->
+<div id="modal1" class="modal"><div class="modal-content">
+        <h4 id="title_loads">Loads</h4>
+        <button type="submit">SEND</button>
+        <div id="loads"></div>
+        <a href="#" class="close">Închide</a>
+    </div></div>
+<div id="modal2" class="modal"><div class="modal-content"><h2>Conținut 2</h2><a href="#" class="close">Închide</a></div></div>
+<div id="modal3" class="modal"><div class="modal-content"><h2>Conținut 3</h2><a href="#" class="close">Închide</a></div></div>
+<div id="modal4" class="modal"><div class="modal-content"><h2>Conținut 4</h2><a href="#" class="close">Închide</a></div></div>
+<div id="modal5" class="modal"><div class="modal-content"><h2>Conținut 5</h2><a href="#" class="close">Închide</a></div></div>
+
+<!-- Modalul pentru Setări -->
+<div id="settings" class="modal">
+  <div class="modal-content">
+    <h2>Setări</h2>
+    <label for="theme-toggle" class="btn">Schimbă Tema (L/D)</label>
+    <div class="lang-selector">
+       <a href="?lang=ro" class="btn">RO</a>
+       <a href="?lang=en" class="btn">EN</a>
+    </div>
+    <a href="#" class="close">Închide</a>
+  </div>
+</div>
+<script src="./app.js"></script>
+<script src="./modal_1.js"></script>
+</body>
+</html>

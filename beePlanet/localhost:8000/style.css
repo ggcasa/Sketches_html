@@ -1,0 +1,124 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #ffffff;
+  --text: #333333;
+  --border: #cccccc;
+}
+
+/* Logica Dark Mode */
+#theme-toggle:checked ~ nav,
+#theme-toggle:checked ~ .modal {
+  --bg: #000000;
+  --text: #ffffff;
+  --border: #444444;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  font-family: sans-serif;
+  overflow-x: hidden;
+}
+
+/* Grila 2x3 */
+nav {
+  background-color: var(--bg);
+}
+
+nav ol {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: repeat(3, 1fr);
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+nav ol li {
+  border: 2px solid var(--border);
+  display: flex;
+}
+
+nav ol li a {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  font-size: 8vh;
+  font-weight: bold;
+  color: var(--text);
+}
+
+/* Modal universal */
+.modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 1000;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  overflow-y: auto; /* Permite scroll */
+}
+
+.modal:target {
+  display: flex;
+}
+
+.modal-content {
+  background-color: var(--bg);
+  color: var(--text);
+  padding: 1.5rem;
+  border: 6px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  text-align: center;
+  width: 95%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.btn {
+  padding: 1rem;
+  border: 2px solid var(--border);
+  text-decoration: none;
+  color: var(--text);
+  cursor: pointer;
+  font-weight: bold;
+  word-wrap: break-word;
+}
+
+.close {
+  color: #ff4444;
+  text-decoration: none;
+  font-weight: bold;
+  margin-top: 1rem;
+  font-size: 1.2rem;
+}
+
+#loads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+/* Ajustări pentru ecrane foarte mici */
+@media (max-width: 480px) {
+  nav ol li a {
+    font-size: 6vh;
+  }
+  .modal-content {
+    padding: 1rem;
+    gap: 1rem;
+  }
+}
