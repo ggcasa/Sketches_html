@@ -3,7 +3,7 @@ const modal1 = document.getElementById("modal1");
 const contentM1 = modal1.firstElementChild; 
 const loads = contentM1.querySelector("#loads"); 
 
-const nameBlock = ["L", "R", "T"];
+const nameBlock = ["X", "Y", "Z"];
 
 const blocksData = nameBlock.map(name => ({
     name: name,
