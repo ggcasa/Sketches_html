@@ -1,0 +1,83 @@
+* {
+    margin: 0px;
+    box-sizing: border-box;
+}
+
+:root {
+  background-color: white;
+  color: black;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    background-color: black;
+    color: white;
+  }
+}
+
+/* Navbar-ul rămâne fix sus */
+.navbar {
+    position: sticky;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background-color: #333;
+    color: white;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 30px;
+    z-index: 1000;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    height: 60px; /* Îi dăm o înălțime fixă pentru calculul gridului */
+}
+
+.navbar .logo {
+    font-weight: bold;
+    font-size: 1.2rem;
+}
+
+.nav-links {
+    list-style: none;
+    display: flex;
+    margin: 0;
+    padding: 0;
+    gap: 20px;
+}
+
+.nav-links a {
+    color: white;
+    text-decoration: none;
+    transition: color 0.3s;
+}
+
+.nav-links a:hover {
+    color: #00bcd4;
+}
+
+.box {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr); 
+    
+    grid-auto-rows: 150px; 
+    
+    gap: 4px; 
+    padding: 4px;
+    
+    height: calc(100vh - 60px); 
+    width: 100vw;
+    background-color: gray;
+    
+    overflow-y: auto; 
+    overflow-x: hidden;
+}
+
+.boxes {
+    background-color: rgba(13, 37, 44, 0.5);
+    /* color: white; */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* font-family: sans-serif; */
+    /* font-weight: bold; */
+}

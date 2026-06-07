@@ -24,10 +24,10 @@ nameBlock.forEach(name => {
         blockData.load.forEach(item => {
             if (item.nr % 2 === 0) {
                 blockHTML += `<div class="load-item"><input type="checkbox" id="${name}_${item.nr}" name="${name}_${item.nr}" value="${name}_${item.nr}" checked />
-    <label for="${name}_${item.nr}">${name}${item.nr}</label></div>`
+                    <label for="${name}_${item.nr}">${name}${item.nr}</label></div>`
             } else {
                 blockHTML += `<div class="load-item"><input type="checkbox" id="${name}_${item.nr}" name="${name}_${item.nr}" value="${name}_${item.nr}" />
-    <label for="${name}_${item.nr}">${name}${item.nr}</label></div>`
+                    <label for="${name}_${item.nr}">${name}${item.nr}</label></div>`
             }
         });
 
