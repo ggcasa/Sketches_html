@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Genera WebXR Barebones NVSE</title>
+    <script src="../wasm_exec.js"></script>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: transparent;
+            font-family: monospace;
+        }
+        #START_AR_BUTON {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px 40px;
+            font-size: 18px;
+            font-weight: bold;
+            color: black;
+            background-color: #00ffcc;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            z-index: 10;
+            box-shadow: 0 4px 15px rgba(0,255,204,0.4);
+        }
+        #text-stanga-jos {
+            position: absolute;
+            bottom: 25px;
+            left: 20px;
+            color: #00ffcc;
+            font-size: 14px;
+            line-height: 1.5;
+            z-index: 5;
+            pointer-events: none;
+            text-shadow: 2px 2px 4px #000000;
+        }
+    </style>
+</head>
+<body>
+
+    <button id="START_AR_BUTON">PORNEȘTE AR BAREBONES</button>
+
+    <div id="text-stanga-jos">➔ WASM GO: Se încarcă...</div>
+
+    <script>
+        const buton = document.getElementById('START_AR_BUTON');
+        const textStangaJos = document.getElementById('text-stanga-jos');
+
+        let gl = null;
+        let xrRefSpace = null;
+        let shaderProgram = null;
+        let vertexBuffer = null;
+
+        // 1. ÎNCĂRCARE GO WASM
+        const go = new Go();
+        WebAssembly.instantiateStreaming(fetch("hello.wasm"), go.importObject)
+            .then((result) => {
+                go.run(result.instance);
+                textStangaJos.innerText = "➔ WASM GO: Pregătit.";
+            }).catch(err => {
+                textStangaJos.innerText = "➔ WASM GO Eroare: " + err.message;
+            });
+
+        // 2. INITIALIZARE WEBXR NATIIV (BAREBONES)
+        buton.addEventListener('click', () => {
+            if (!navigator.xr) return;
+            navigator.xr.requestSession('immersive-ar', {
+                requiredFeatures: ['local'],
+                optionalFeatures: ['dom-overlay'],
+                domOverlay: { root: document.body }
+            }).then(onSessionStarted);
+        });
+
+        function onSessionStarted(session) {
+            buton.style.display = 'none';
+
+            const canvas = document.createElement('canvas');
+            gl = canvas.getContext('webgl', { xrCompatible: true });
+            
+            session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
+            initWebGLBuffers();
+
+            session.requestReferenceSpace('local').then((refSpace) => {
+                xrRefSpace = refSpace;
+                session.requestAnimationFrame(onXRFrame);
+            });
+        }
+
+        // 3. MATEMATICA GRAFICĂ DIRECTĂ (SADISTICĂ DAR NESURPĂTOARE)
+        // Definim geometria unui pătrat plat 2D în spațiu
+        function initWebGLBuffers() {
+            const vsSource = `
+                attribute vec3 position;
+                uniform mat4 uProjectionMatrix;
+                uniform mat4 uViewMatrix;
+                uniform mat4 uModelMatrix;
+                void main() {
+                    gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * vec4(position, 1.0);
+                }
+            `;
+            const fsSource = `
+                precision mediump float;
+                uniform vec4 uColor;
+                void main() {
+                    gl_FragColor = uColor;
+                }
+            `;
+
+            const vs = gl.createShader(gl.VERTEX_SHADER);
+            gl.shaderSource(vs, vsSource); gl.compileShader(vs);
+            const fs = gl.createShader(gl.FRAGMENT_SHADER);
+            gl.shaderSource(fs, fsSource); gl.compileShader(fs);
+
+            shaderProgram = gl.createProgram();
+            gl.attachShader(shaderProgram, vs);
+            gl.attachShader(shaderProgram, fs);
+            gl.linkProgram(shaderProgram);
+
+            // Coordonatele celor 4 colțuri ale unui pătrat
+            const vertices = new Float32Array([
+                -0.25,  0.25, 0.0,
+                -0.25, -0.25, 0.0,
+                 0.25,  0.25, 0.0,
+                 0.25, -0.25, 0.0,
+            ]);
+
+            vertexBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+        }
+
+        // Helper simplu pentru crearea unei matrice de translație directă
+        function m4Translate(out, x, y, z) {
+            out.set([1,0,0,0, 0,1,0,0, 0,0,1,0, x,y,z,1]);
+        }
+
+        // 4. BUCLA DE FRAME-URI REALĂ (CAMERA LIVE + CELE 6 PĂTRATE)
+        function onXRFrame(time, frame) {
+            const session = frame.session;
+            session.requestAnimationFrame(onXRFrame);
+
+            const pose = frame.getViewerPose(xrRefSpace);
+            if (pose) {
+                const glLayer = session.renderState.baseLayer;
+                gl.bindFramebuffer(gl.FRAMEBUFFER, glLayer.framebuffer);
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+                gl.useProgram(shaderProgram);
+
+                const posAttr = gl.getAttribLocation(shaderProgram, 'position');
+                gl.enableVertexAttribArray(posAttr);
+                gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+                gl.vertexAttribPointer(posAttr, 3, gl.FLOAT, false, 0, 0);
+
+                const uProj = gl.getUniformLocation(shaderProgram, 'uProjectionMatrix');
+                const uView = gl.getUniformLocation(shaderProgram, 'uViewMatrix');
+                const uModel = gl.getUniformLocation(shaderProgram, 'uModelMatrix');
+                const uColor = gl.getUniformLocation(shaderProgram, 'uColor');
+
+                // Matricele de transformare din senzori hardware
+                const view = pose.views[0];
+                gl.viewport(0, 0, glLayer.framebufferWidth, glLayer.framebufferHeight);
+                gl.uniformMatrix4fv(uProj, false, view.projectionMatrix);
+                gl.uniformMatrix4fv(uView, false, view.transform.inverse.matrix);
+
+                const modelMatrix = new Float32Array(16);
+
+                // --- DESENĂM CELE 6 PĂTRATE ÎN SPAȚIU ---
+
+                // 1. NORD (Cyan, drept în față la 2 metri)
+                m4Translate(modelMatrix, 0, 0, -2);
+                gl.uniformMatrix4fv(uModel, false, modelMatrix);
+                gl.uniform4f(uColor, 0.0, 1.0, 0.8, 1.0); // Verde-Cyan
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+                // 2. SUD (Roșu, în spate la 2 metri)
+                m4Translate(modelMatrix, 0, 0, 2);
+                gl.uniformMatrix4fv(uModel, false, modelMatrix);
+                gl.uniform4f(uColor, 1.0, 0.2, 0.4, 1.0);
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+                // 3. VEST (Galben, în stânga ta la 2 metri)
+                m4Translate(modelMatrix, -2, 0, 0);
+                gl.uniformMatrix4fv(uModel, false, modelMatrix);
+                gl.uniform4f(uColor, 1.0, 0.8, 0.0, 1.0);
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+                // 4. EST (Albastru, în dreapta ta la 2 metri)
+                m4Translate(modelMatrix, 2, 0, 0);
+                gl.uniformMatrix4fv(uModel, false, modelMatrix);
+                gl.uniform4f(uColor, 0.2, 0.6, 1.0, 1.0);
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+                // 5. SUS (Alb, deasupra capului la 1.5 metri)
+                m4Translate(modelMatrix, 0, 1.5, 0);
+                gl.uniformMatrix4fv(uModel, false, modelMatrix);
+                gl.uniform4f(uColor, 1.0, 1.0, 1.0, 1.0);
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+                // 6. JOS (Violet, sub tine la 1.2 metri)
+                m4Translate(modelMatrix, 0, -1.2, 0);
+                gl.uniformMatrix4fv(uModel, false, modelMatrix);
+                gl.uniform4f(uColor, 0.6, 0.2, 1.0, 1.0);
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+                // EXTRAGEM DATELE PENTRU INTERFAȚĂ ȘI GO WASM
+                const p = pose.transform.position;
+                const o = pose.transform.orientation;
+
+                // Transpunem rotația în grade clare
+                const siny_cosp = 2 * (o.w * o.y + o.x * o.z);
+                const cosy_cosp = 1 - 2 * (o.y * o.y + o.z * o.z);
+                let azimuth = Math.atan2(siny_cosp, cosy_cosp) * (180 / Math.PI);
+                if (azimuth < 0) azimuth += 360;
+
+                textStangaJos.innerHTML = `
+                    <span style="color: #00ffcc; font-weight: bold;">➔ BAREBONES AR PRO</span><br>
+                    Poziție X : ${p.x.toFixed(3)}<br>
+                    Poziție Y : ${p.y.toFixed(3)}<br>
+                    Poziție Z : ${p.z.toFixed(3)}<br>
+                    -------------------------<br>
+                    Grade Busolă : ${azimuth.toFixed(1)}°
+                `;
+
+                // TRANSMITEM DATELE DIRECT ÎN GO
+                if (typeof ProceseazaCoordonateXR === "function") {
+                    ProceseazaCoordonateXR(p.x, p.y, p.z);
+                } else if (typeof ProceseazaCoordonate === "function") {
+                    ProceseazaCoordonate(p.x, p.y, p.z);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
