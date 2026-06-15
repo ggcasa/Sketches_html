@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mod vn 1 (AI)</title>
+  <title>Scan-GenQR</title>
   <style>
     body { font-family: -apple-system, sans-serif; background: #0f0f12; color: #e4e4e7; margin: 0; padding: 15px; text-align: center; }
     .container { max-width: 500px; margin: 0 auto; }
@@ -29,12 +29,13 @@
   </style>
 
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
 
 <div class="container">
-  <h2>Scanner VIN Auto</h2>
-  <p style="font-size: 14px; color: #8e8e93; margin-top: -10px;">Încadrați complet cele 17 caractere</p>
+  <h2>Scanner & gen-QR</h2>
+  <p style="font-size: 14px; color: #8e8e93; margin-top: -10px;">Fully fit the 17 characters</p>
   
   <div class="scanner-container">
     <video id="video" autoplay playsinline muted></video>
@@ -42,19 +43,24 @@
   </div>
 
   <div class="button-group">
-    <button id="btnAction">Pornește Camera</button>
-    <button id="btnCopy">Copiază VIN</button>
+    <button id="btnAction">Start Camera</button>
+    <button id="btnCopy" command="show-modal" commandfor="show-qr">Copy & Gen QR</button>
   </div>
 
   <div class="box">
-    <div id="statusLabel" class="status">Așteptare cameră...</div>
+    <div id="statusLabel" class="status">Waiting for camera...</div>
     <div id="ocrResult" class="result">-----------------</div>
-    <div id="charCounter" class="counter">0 / 17 caractere</div>
+    <div id="charCounter" class="counter">0 / 17 characters</div>
   </div>
 
-  <div class="debug-label">Analiză Optică:</div>
+  <div class="debug-label">Optical analyze:</div>
   <canvas id="cropCanvas"></canvas>
 </div>
+
+<dialog id="show-qr">
+  <div class="qrcode"></div>
+  <button command="close" commandfor="show-qr">CLOSE</button>
+</dialog>
 
 <script>
 const video = document.getElementById('video');
@@ -202,7 +208,7 @@ async function scanLoop() {
 
       if (cleanText.length > 0) {
         ocrResult.innerText = cleanText;
-        charCounter.innerText = `${cleanText.length} / 17 caractere`;
+        charCounter.innerText = `${cleanText.length} / 17 characters`;
       }
 
       if (cleanText.length === 17) {
@@ -215,6 +221,15 @@ async function scanLoop() {
         btnAction.classList.remove("active");
         btnCopy.style.display = "block"; 
         if (!feedbackPlayed) { triggerSuccessFeedback(); feedbackPlayed = true; }
+        
+        
+        // document.querySelector(".qrcode")[0].innerText = "";
+
+        let qrcode = new QRCode(
+                document.querySelector(".qrcode")
+                );
+            qrcode.makeCode(cleanText);
+        
       } else {
         statusLabel.innerText = "Se scanează...";
         statusLabel.style.color = "#ff3b30";
@@ -226,9 +241,10 @@ async function scanLoop() {
     }
   }
   
-  // Rulează o dată pe secundă
   setTimeout(scanLoop, 1000);
 }
+
+
 </script>
 
 </body>
